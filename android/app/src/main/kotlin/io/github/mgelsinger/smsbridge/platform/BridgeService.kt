@@ -40,7 +40,8 @@ class BridgeService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
         val g = graph
-        watcher = MessageWatcher(this, g.repo, g.hub, g.log::add, scope).also { it.start() }
+        watcher = MessageWatcher(this, g.repo, g.hub, g.log::add, scope, g.tracker).also { it.start() }
+        g.sender.register()
         nsd = NsdAdvertiser(this, g.log::add)
         wifi = WifiMonitor(this) { address -> scope.launch { onWifi(address) } }.also { it.start() }
         g.log.add("service started")
@@ -87,6 +88,7 @@ class BridgeService : Service() {
     override fun onDestroy() {
         wifi.stop()
         watcher.stop()
+        graph.sender.unregister()
         synchronized(this) { stopServer() }
         scope.cancel()
         graph.setState(ServiceState.Stopped)

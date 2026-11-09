@@ -79,6 +79,8 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
         return rawThreads().associate { t -> t.id to t.recipientIds.mapNotNull { addresses[it] }.map(::normalize).distinct() }
     }
 
+    override fun threadParticipants(threadId: Long): List<String>? = participantsByThread()[threadId]
+
     override fun threadPage(limit: Int, before: ThreadKey?): Page<ThreadSummary, ThreadKey> {
         val all = rawThreads().sortedByDescending { ThreadKey(it.date, it.id) }
         val page = Paging.newestFirst(all, limit, before) { ThreadKey(it.date, it.id) }

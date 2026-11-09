@@ -20,6 +20,9 @@ interface SmsRepository {
 
     fun contacts(): List<Contact>
 
+    /** The thread's other participants, or null when it does not exist. */
+    fun threadParticipants(threadId: Long): List<String>?
+
     fun mmsPart(partId: Long): PartBytes?
 
     fun deviceInfo(): DeviceInfo

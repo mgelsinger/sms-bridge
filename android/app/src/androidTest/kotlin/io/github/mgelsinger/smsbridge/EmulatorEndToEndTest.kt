@@ -10,6 +10,11 @@ import io.github.mgelsinger.smsbridge.core.EventHub
 import io.github.mgelsinger.smsbridge.core.InMemoryClientStore
 import io.github.mgelsinger.smsbridge.core.PairingManager
 import io.github.mgelsinger.smsbridge.core.SyncCursor
+import io.github.mgelsinger.smsbridge.core.SendTracker
+import io.github.mgelsinger.smsbridge.platform.AndroidSender
+import io.github.mgelsinger.smsbridge.protocol.SendResultFrame
+import io.github.mgelsinger.smsbridge.protocol.SendStatus
+import java.util.UUID
 import io.github.mgelsinger.smsbridge.platform.AndroidSmsRepository
 import io.github.mgelsinger.smsbridge.platform.KeystoreIdentity
 import io.github.mgelsinger.smsbridge.platform.MessageWatcher
@@ -56,7 +61,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EmulatorEndToEndTest {
     @get:Rule
-    val permissions: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.READ_SMS, Manifest.permission.READ_CONTACTS)
+    val permissions: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS)
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -65,9 +70,11 @@ class EmulatorEndToEndTest {
     private val repo = AndroidSmsRepository(context)
     private val hub = EventHub()
     private val pairing = PairingManager(InMemoryClientStore())
-    private val api = BridgeApi(repo, pairing, confirmPairing = { true }, log = log)
+    private val tracker = SendTracker()
+    private val sender = AndroidSender(context, repo, tracker, hub, log)
+    private val api = BridgeApi(repo, pairing, confirmPairing = { true }, sendHandler = sender, log = log)
     private val server = BridgeServer(api, hub, identity, TlsFront.LOOPBACK_V4, 0, log)
-    private val watcher = MessageWatcher(context, repo, hub, log, scope)
+    private val watcher = MessageWatcher(context, repo, hub, log, scope, tracker)
     private var port = 0
     private lateinit var http: OkHttpClient
 
@@ -86,6 +93,7 @@ class EmulatorEndToEndTest {
 
     @After
     fun tearDown() {
+        sender.unregister()
         watcher.stop()
         server.stop()
         scope.cancel()
@@ -151,5 +159,60 @@ class EmulatorEndToEndTest {
         val page = ProtocolJson.decodeFromString(MessagesPage.serializer(), body)
         assertTrue("thread page includes ${message.id}", page.messages.any { it.id == message.id })
         assertTrue(page.messages.zipWithNext().all { (a, b) -> a.date >= b.date })
+    }
+
+    @Test
+    fun sendToTheEmulatorsOwnNumberAndSeeItComeBack() {
+        val token = pairing.issueToken("EMULATOR-CI").second
+        val frames = LinkedBlockingQueue<WsFrame>()
+        val ws = http.newWebSocket(
+            Request.Builder().url("wss://127.0.0.1:$port/ws").header("Authorization", "Bearer $token").build(),
+            object : WebSocketListener() {
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    frames.add(ProtocolJson.decodeFromString(WsFrame.serializer(), text))
+                }
+            },
+        )
+        assertTrue(frames.poll(30, TimeUnit.SECONDS) is HelloFrame)
+
+        // The emulator on console port 5554 answers to 15555215554, so this loops back as an inbound text.
+        val clientId = UUID.randomUUID().toString()
+        val body = "loopback ${clientId.take(8)}"
+        ws.send("""{"protocol_version":1,"type":"send","client_id":"$clientId","to":["15555215554"],"body":"$body"}""")
+
+        val statuses = mutableListOf<SendStatus>()
+        var echoed: MessageFrame? = null
+        var inbound: MessageFrame? = null
+        var messageId: String? = null
+        val deadline = System.currentTimeMillis() + 120_000
+        while ((SendStatus.SENT !in statuses || echoed == null || inbound == null || messageId == null) && System.currentTimeMillis() < deadline) {
+            when (val f = frames.poll(5, TimeUnit.SECONDS)) {
+                is SendResultFrame -> if (f.clientId == clientId) {
+                    statuses += f.status
+                    if (f.messageId != null) messageId = f.messageId
+                }
+                is MessageFrame -> if (f.message.body == body) {
+                    if (f.message.direction == Direction.OUT) echoed = f else inbound = f
+                }
+                else -> {}
+            }
+        }
+        Log.i("SmsBridgeTest", "send statuses $statuses, echoed ${echoed?.message?.id}, inbound ${inbound?.message?.id}")
+        assertEquals(SendStatus.QUEUED, statuses.firstOrNull())
+        assertTrue("reached sent: $statuses", SendStatus.SENT in statuses)
+        assertTrue("no failure: $statuses", SendStatus.FAILED !in statuses)
+        val stored = checkNotNull(echoed) { "the stored copy of the sent text was not pushed" }.message
+        assertEquals("the stored copy carries the client_id", clientId, stored.clientId)
+        assertEquals("send_result names the stored message", stored.id, messageId)
+        checkNotNull(inbound) { "the text did not loop back as an inbound message" }
+
+        // Replaying the same client_id returns the remembered result instead of sending again.
+        frames.clear()
+        ws.send("""{"protocol_version":1,"type":"send","client_id":"$clientId","to":["15555215554"],"body":"$body"}""")
+        val replay = frames.poll(10, TimeUnit.SECONDS)
+        assertTrue("replay answers with a result: $replay", replay is SendResultFrame && replay.clientId == clientId && replay.status != SendStatus.QUEUED)
+        Thread.sleep(5_000)
+        assertTrue("no second copy was sent", frames.none { it is MessageFrame && it.message.body == body && it.message.direction == Direction.OUT })
+        ws.close(1000, null)
     }
 }

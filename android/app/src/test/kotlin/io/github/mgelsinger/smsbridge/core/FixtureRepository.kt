@@ -72,6 +72,9 @@ class FixtureRepository(root: File = fixturesDir()) : SmsRepository {
 
     override fun contacts(): List<Contact> = contactList
 
+    @Synchronized
+    override fun threadParticipants(threadId: Long): List<String>? = threads[threadId]?.participants
+
     override fun mmsPart(partId: Long): PartBytes? =
         if (partId == 3001L) PartBytes("image/png", ByteArray(236) { it.toByte() }) else null
 

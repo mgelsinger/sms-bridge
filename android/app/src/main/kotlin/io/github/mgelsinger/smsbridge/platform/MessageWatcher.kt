@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import io.github.mgelsinger.smsbridge.core.EventHub
+import io.github.mgelsinger.smsbridge.core.SendTracker
 import io.github.mgelsinger.smsbridge.core.SmsRepository
 import io.github.mgelsinger.smsbridge.core.SyncCursor
 import io.github.mgelsinger.smsbridge.protocol.MessageFrame
@@ -26,6 +27,7 @@ class MessageWatcher(
     private val hub: EventHub,
     private val log: (String) -> Unit,
     private val scope: CoroutineScope,
+    private val tracker: SendTracker? = null,
 ) {
     private val resolver = context.contentResolver
     private val trigger = Channel<Unit>(Channel.CONFLATED)
@@ -70,7 +72,11 @@ class MessageWatcher(
             var pushed = 0
             while (true) {
                 val result = repo.messagesSince(c, BATCH)
-                for (m in result.messages) hub.publish(MessageFrame(message = m))
+                for (m in result.messages) {
+                    val (message, update) = tracker?.claim(m) ?: (m to null)
+                    hub.publish(MessageFrame(message = message))
+                    update?.let(hub::publish)
+                }
                 pushed += result.messages.size
                 c = result.next
                 cursor = c

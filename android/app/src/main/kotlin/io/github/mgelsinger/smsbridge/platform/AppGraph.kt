@@ -7,6 +7,7 @@ import io.github.mgelsinger.smsbridge.core.ClientStore
 import io.github.mgelsinger.smsbridge.core.EventHub
 import io.github.mgelsinger.smsbridge.core.PairedClient
 import io.github.mgelsinger.smsbridge.core.PairingManager
+import io.github.mgelsinger.smsbridge.core.SendTracker
 import io.github.mgelsinger.smsbridge.server.TlsIdentity
 import java.text.DateFormat
 import java.util.Date
@@ -33,9 +34,17 @@ class AppGraph(val context: Context) {
     val hub = EventHub()
     val repo = AndroidSmsRepository(context)
     val confirmations = PairingConfirmations()
+    val tracker = SendTracker()
+    val sender = AndroidSender(context, repo, tracker, hub, log::add)
     val identity: TlsIdentity by lazy { KeystoreIdentity.loadOrCreate() }
     val api: BridgeApi by lazy {
-        BridgeApi(repo, pairing, confirmPairing = { name -> confirmations.request(context, name) }, log = log::add)
+        BridgeApi(
+            repo,
+            pairing,
+            confirmPairing = { name -> confirmations.request(context, name) },
+            sendHandler = sender,
+            log = log::add,
+        )
     }
 
     private val _state = MutableStateFlow<ServiceState>(ServiceState.Stopped)
