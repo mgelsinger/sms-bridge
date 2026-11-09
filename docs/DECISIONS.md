@@ -3,6 +3,62 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Phases 2 and 3, 2026-11-09
+
+**Hardware gates are batched into one desk session.** Phases 2 and 3 are built
+and proven in CI as far as CI can go. Their gates need the real phone and PC,
+so they close together with `docs/DESK-CHECKLIST.md`, and `docs/PHASE-2.md`
+and `docs/PHASE-3.md` (which trigger the phase tags) are written after that
+session, not before.
+
+**Pairing without a webcam: probe, compare, then pin.** The PC completes a TLS
+handshake with the phone, sends nothing, and shows the certificate fingerprint
+in the same four-line layout the phone shows. The user confirms the match
+before pairing, as with SSH's first connection. When the phone was found over
+mDNS, its advertised fingerprint prefix is also checked automatically. The
+probe still verifies that the server holds the certificate's key. This is not
+a "skip verification" option: after pairing, every connection is pinned, and a
+mismatch is a hard stop. Pasting the QR text skips the visual comparison
+because the QR carries the full fingerprint.
+
+**Following the phone to a new IP address.** When the phone is unreachable,
+the PC browses mDNS at most every 30 seconds for a phone advertising the
+paired fingerprint prefix at a different address, probes it, and moves only if
+the full fingerprint matches.
+
+**hyper instead of reqwest.** One rustls configuration with the pinning
+verifier serves both REST and the WebSocket, so there is a single place where
+the phone's identity is checked. hyper's HTTP/1.1 client over that TLS stream
+is enough for one POST and a handful of GETs.
+
+**The phone is authoritative for message rows.** If a message id comes back
+with different content, the PC replaces the whole row instead of merging.
+
+**Group threads are read-only on the PC.** Replying to a group needs MMS
+sending, deferred to phase 5. The composer explains this instead of offering a
+send that would fail.
+
+**Sent-message matching.** Android stores each SMS sent through `SmsManager`
+by a non-default app in the provider itself. The phone matches that row to the
+pending send by number (last 10 digits) and exact body within 5 minutes, and
+attaches the client_id, so the PC never shows a duplicate bubble.
+
+**New dependencies**
+
+| Dependency | Where | Why |
+| --- | --- | --- |
+| `tokio`, `futures-util` | desktop core | Async runtime and stream helpers for the sync engine |
+| `rustls`, `tokio-rustls` (ring provider) | desktop core | TLS with a custom pinning verifier; ring avoids a C toolchain on Windows CI |
+| `hyper`, `hyper-util`, `http-body-util` | desktop core | HTTP/1.1 client over the pinned TLS stream |
+| `tokio-tungstenite` (handshake only) | desktop core | WebSocket client over the same stream |
+| `ring` | desktop core | SHA-256 for fingerprints; already pulled in by rustls |
+| `rusqlite` (bundled) | desktop core | Local message store with a pinned SQLite build |
+| `mdns-sd` | desktop core | Pure-Rust mDNS browsing |
+| `uuid`, `thiserror`, `log` | desktop core | client_ids, error types, logging facade |
+| `keyring` | desktop app | Windows Credential Manager for the token |
+| `tauri-plugin-notification` | desktop app | Windows toasts |
+| `@testing-library/react`, `jsdom` (dev) | desktop UI | Component tests for the composer |
+
 ## Phase 1, 2026-11-09
 
 **Ktor CIO behind a small TLS front.** Ktor's CIO engine is the one supported

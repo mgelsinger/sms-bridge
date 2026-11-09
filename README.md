@@ -7,8 +7,10 @@ The phone runs a small service that reads and sends SMS through its own SIM.
 The Windows app pairs with it once (QR code plus a pinned certificate) and keeps
 a local copy of your conversations.
 
-**Status:** early development. The phone side reads and pushes texts (phase 1);
-the Windows app is in progress. See [docs/PLAN.md](docs/PLAN.md).
+**Status:** early development. Reading, receiving, and sending work end to end
+in CI (Android emulator, mock phone, Windows build). Next is a check on real
+hardware: [docs/DESK-CHECKLIST.md](docs/DESK-CHECKLIST.md). See
+[docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
 ## Installing a dev build
 
