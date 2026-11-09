@@ -122,6 +122,9 @@ Text frames only, one JSON object per frame, each with `protocol_version` and
    `send_result` for it. This makes reconnect replay safe.
 5. If no delivery report arrives within 60 seconds of `"sent"`, the client
    treats `"sent"` as final.
+6. Results for one `client_id` are sent in order, but clients still treat the
+   status as only moving forward (queued, sent, delivered; failed is final)
+   and ignore a result that would move it back.
 
 ### Close codes
 
