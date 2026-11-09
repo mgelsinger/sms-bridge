@@ -217,4 +217,21 @@ class EmulatorEndToEndTest {
         assertTrue("no second copy was sent", frames.none { it is MessageFrame && it.message.body == body && it.message.direction == Direction.OUT })
         ws.close(1000, null)
     }
+
+    /**
+     * The Windows client checks TLS handshake signatures with rustls and webpki, which only
+     * accept X.509 v3 certificates with ECDSA P-256 keys it knows. Guard what Keystore issues.
+     */
+    @Test
+    fun keystoreCertificateIsOneTheWindowsClientAccepts() {
+        val cert = identity.certificate
+        Log.i("SmsBridgeTest", "cert v${cert.version} ${cert.sigAlgName} key ${cert.publicKey.algorithm} critical ${cert.criticalExtensionOIDs}")
+        assertEquals("X.509 version", 3, cert.version)
+        assertEquals("EC", cert.publicKey.algorithm)
+        assertEquals(256, (cert.publicKey as java.security.interfaces.ECPublicKey).params.order.bitLength())
+        val known = setOf("2.5.29.15", "2.5.29.19", "2.5.29.37", "2.5.29.17", "2.5.29.30")
+        val unknownCritical = cert.criticalExtensionOIDs.orEmpty() - known
+        assertTrue("critical extensions webpki does not know: $unknownCritical", unknownCritical.isEmpty())
+        cert.checkValidity()
+    }
 }
