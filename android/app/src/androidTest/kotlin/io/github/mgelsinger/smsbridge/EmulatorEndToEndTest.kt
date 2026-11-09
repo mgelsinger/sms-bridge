@@ -9,6 +9,7 @@ import io.github.mgelsinger.smsbridge.core.BridgeApi
 import io.github.mgelsinger.smsbridge.core.EventHub
 import io.github.mgelsinger.smsbridge.core.InMemoryClientStore
 import io.github.mgelsinger.smsbridge.core.PairingManager
+import io.github.mgelsinger.smsbridge.core.SyncCursor
 import io.github.mgelsinger.smsbridge.platform.AndroidSmsRepository
 import io.github.mgelsinger.smsbridge.platform.KeystoreIdentity
 import io.github.mgelsinger.smsbridge.platform.MessageWatcher
@@ -122,13 +123,19 @@ class EmulatorEndToEndTest {
             },
         )
         val hello = frames.poll(30, TimeUnit.SECONDS) as HelloFrame
-        Log.i("SmsBridgeTest", "hello received, waiting for an injected text")
+        // Live frames and sync together cover every message, but a message stored just
+        // before `hello` can arrive live only. Wait for one that is newer than the hello
+        // cursor, which sync from that cursor must then also return.
+        val helloCursor = checkNotNull(SyncCursor.decode(hello.syncCursor))
+        Log.i("SmsBridgeTest", "hello received at ${hello.syncCursor}, waiting for an injected text")
 
         val deadline = System.currentTimeMillis() + 240_000
         var inbound: MessageFrame? = null
         while (inbound == null && System.currentTimeMillis() < deadline) {
             val f = frames.poll(5, TimeUnit.SECONDS) ?: continue
-            if (f is MessageFrame && f.message.direction == Direction.IN && f.message.body?.startsWith("hello from ci") == true) inbound = f
+            val newer = f is MessageFrame && f.message.id.startsWith("sms:") &&
+                f.message.id.substringAfter(':').toLong() > helloCursor.sms
+            if (newer && f is MessageFrame && f.message.direction == Direction.IN && f.message.body?.startsWith("hello from ci") == true) inbound = f
         }
         val message = checkNotNull(inbound) { "no injected text reached the WebSocket within 4 minutes" }.message
         Log.i("SmsBridgeTest", "live message ${message.id} in thread ${message.threadId}")
