@@ -112,9 +112,16 @@ class BridgeServer(
                 }
             }
         }.start(wait = false)
-        val innerPort = runBlocking { server.engine.resolvedConnectors().first().port }
-        val front = TlsFront(identity, bind, port, innerPort, log)
-        val tlsPort = front.start()
+        val front: TlsFront
+        val tlsPort: Int
+        try {
+            val innerPort = runBlocking { server.engine.resolvedConnectors().first().port }
+            front = TlsFront(identity, bind, port, innerPort, log)
+            tlsPort = front.start()
+        } catch (e: Exception) {
+            server.stop(0, 500)
+            throw e
+        }
         http = server
         tls = front
         log("listening on ${bind.hostAddress}:$tlsPort")

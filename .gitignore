@@ -16,3 +16,4 @@ desktop/src-tauri/gen/
 # OS
 .DS_Store
 Thumbs.db
+!android/app/dev-debug.keystore

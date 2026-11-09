@@ -23,3 +23,29 @@ jobs:
         run: set -o pipefail; npm test 2>&1 | tee ci.log
       - if: failure()
         run: node tools/ci/annotate.mjs ci.log "protocol"
+
+  phase-tags:
+    name: Tag finished phases
+    needs: protocol
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Tag the commit that added each docs/PHASE-N.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for f in docs/PHASE-*.md; do
+            [ -e "$f" ] || continue
+            n=$(basename "$f" .md | sed 's/PHASE-//')
+            tag="phase-$n"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then continue; fi
+            sha=$(git log --diff-filter=A --format=%H -1 -- "$f")
+            git tag -a "$tag" "$sha" -m "Phase $n, see $f"
+            git push origin "$tag"
+            echo "::notice title=phase tag::$tag -> ${sha::7}"
+          done

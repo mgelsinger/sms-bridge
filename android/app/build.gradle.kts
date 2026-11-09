@@ -13,9 +13,22 @@ android {
         applicationId = "io.github.mgelsinger.smsbridge"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI run numbers keep dev builds ordered; local builds are 1.
+        val run = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = run
+        versionName = "0.1.0-dev.$run"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        // A stable, public dev key so each CI build installs over the last one
+        // without losing pairing. Not a release key: see docs/DECISIONS.md.
+        getByName("debug") {
+            storeFile = file("dev-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
