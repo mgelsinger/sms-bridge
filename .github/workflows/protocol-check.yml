@@ -1,0 +1,25 @@
+name: protocol
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Schemas, fixtures, mock phone
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate fixtures and test the mock phone
+        run: set -o pipefail; npm test 2>&1 | tee ci.log
+      - if: failure()
+        run: node tools/ci/annotate.mjs ci.log "protocol"

@@ -1,0 +1,76 @@
+name: desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core tests, lint, frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Core tests and lint
+        working-directory: desktop
+        run: |
+          set -o pipefail
+          {
+            cargo fmt --all --check &&
+            cargo test -p sms-bridge-core &&
+            cargo clippy -p sms-bridge-core --all-targets -- -D warnings &&
+            npm ci &&
+            npm run typecheck &&
+            npm test
+          } 2>&1 | tee ../core.log
+      - if: failure()
+        run: node tools/ci/annotate.mjs core.log "desktop core"
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Lint and build the installer
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            npm ci &&
+            cargo clippy --workspace --all-targets -- -D warnings &&
+            npx tauri build --bundles nsis
+          } 2>&1 | tee ../windows.log
+      - if: failure()
+        shell: bash
+        run: node tools/ci/annotate.mjs windows.log "windows"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sms-bridge-windows-installer
+          path: desktop/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
