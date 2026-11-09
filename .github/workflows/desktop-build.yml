@@ -24,7 +24,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - name: Install the mock phone (used by the core integration tests)
+        run: npm ci
       - name: Core tests and lint
         working-directory: desktop
         run: |

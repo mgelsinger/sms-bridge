@@ -78,6 +78,8 @@ export async function startMockPhone(options = {}) {
   const fingerprint = certFingerprint(certPem);
   const validator = loadValidator();
   const state = loadState();
+  // A restarted real phone never reuses row ids; let tests continue the sequence.
+  if (opts.firstSmsId) state.maxSms = Math.max(state.maxSms, opts.firstSmsId - 1);
   const startedAt = Date.now();
   const tokenHashes = new Set(opts.tokens.map(sha256));
   const pairing = { code: opts.pairingCode, expiresAt: Date.now() + opts.pairingTtlMs, used: false, failures: [], lockedUntil: 0 };

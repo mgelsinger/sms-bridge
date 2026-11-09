@@ -3,4 +3,7 @@
 //! Everything here builds and tests on any OS. The Tauri shell in
 //! `desktop/src-tauri` wires it to the window, tray, and notifications.
 
+pub mod net;
 pub mod protocol;
+pub mod store;
+pub mod sync;

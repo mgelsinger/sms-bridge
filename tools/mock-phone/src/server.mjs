@@ -6,6 +6,7 @@
 //   MOCK_TOKEN           pre-authorized 43-char token, skips pairing
 //   MOCK_INBOUND_EVERY_S simulate an incoming text every N seconds (default off)
 //   MOCK_FAIL_TO         comma-separated numbers whose sends fail
+//   MOCK_FIRST_SMS_ID    continue SMS ids from here, as a restarted phone would
 import { startMockPhone } from "./mock.mjs";
 
 const env = process.env;
@@ -15,6 +16,7 @@ const phone = await startMockPhone({
   ...(env.MOCK_PAIRING_CODE ? { pairingCode: env.MOCK_PAIRING_CODE } : {}),
   tokens: env.MOCK_TOKEN ? [env.MOCK_TOKEN] : [],
   failTo: (env.MOCK_FAIL_TO ?? "").split(",").filter(Boolean),
+  ...(env.MOCK_FIRST_SMS_ID ? { firstSmsId: Number(env.MOCK_FIRST_SMS_ID) } : {}),
 });
 
 console.log(`mock phone "${phone.deviceName}" listening on https://${phone.host}:${phone.port}`);
