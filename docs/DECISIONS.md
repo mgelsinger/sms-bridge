@@ -3,6 +3,17 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## RCS, 2026-11-09
+
+**RCS is turned off on the phone rather than bridged.** RCS messages are not
+in the SMS provider, so the PC cannot see them, text or otherwise. The
+alternative was a notification listener that captures incoming RCS text. It
+was rejected for now: notification access exposes every app's notifications
+to the bridge, it gives inbound text only with no history, and replies would
+still go out as SMS. Mickey turned RCS chats off in Google Messages, accepting
+the loss of RCS end-to-end encryption on those chats. Revisit only if
+one-sided threads turn out to be a problem in daily use.
+
 ## Phases 2 and 3, 2026-11-09
 
 **Hardware gates are batched into one desk session.** Phases 2 and 3 are built

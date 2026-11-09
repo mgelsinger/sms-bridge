@@ -29,7 +29,11 @@ from this repository's Releases page.
 ## What it will not do
 
 - **RCS chats.** Google Messages keeps RCS in its own private store, so only SMS
-  and MMS are visible to other apps. RCS conversations will not appear.
+  and MMS are visible to other apps. RCS messages, including plain text ones,
+  will not appear, and replies from the PC always go out as SMS. Turn off
+  **RCS chats** in Google Messages settings so everything arrives as SMS or
+  MMS. The cost is RCS's end-to-end encryption, typing indicators, and read
+  receipts; use an end-to-end encrypted messenger for anything sensitive.
 - **Work outside your network** unless you add your own VPN (Tailscale or
   WireGuard) so the PC can reach the phone.
 

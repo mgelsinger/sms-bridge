@@ -11,6 +11,14 @@ Use the newest **Dev build** on the
 and one `-setup.exe` from the same build. Note the build name (`dev-xxxxxxx`)
 when you report back.
 
+## 0. Before you start
+
+- **RCS chats are off** in Google Messages (Settings, RCS chats). Done on
+  2026-11-09. With RCS on, those conversations never reach the SMS store and
+  would not show on the PC.
+- Phone and PC are on the same Wi-Fi network, not a guest network. Guest
+  networks usually block devices from reaching each other.
+
 ## 1. Phone app (can be done from the phone alone)
 
 1. Open the `.apk` on the phone and install it.
@@ -83,3 +91,24 @@ the PC still gets the notification.
 
 Report: yes or no, and phone model if no (some manufacturers kill background
 apps; see dontkillmyapp.com).
+
+## If something goes wrong
+
+Stop at the step that failed and send back:
+
+- The step number and what you saw instead.
+- **Phone:** the lines under "Recent events" in SMS Bridge (they never contain
+  message text).
+- **PC:** the status line at the bottom left of the window, and any red error
+  text.
+
+Common causes:
+
+| Symptom | Likely cause |
+| --- | --- |
+| Phone not in the PC's list | Windows Firewall blocked discovery, or the router blocks mDNS. Type the address the phone shows instead. |
+| "Could not reach the phone" after typing the address | Guest Wi-Fi or router "client isolation", or the phone app is off |
+| Fingerprints differ | Stop. Do not pair. Report it. |
+| Phone status stays "On, waiting for Wi-Fi" | The phone is on mobile data or a VPN is active |
+| A contact's replies never show on the PC | That chat is still RCS on their side; it falls back to SMS after their phone notices yours has RCS off, which can take a few messages |
+
