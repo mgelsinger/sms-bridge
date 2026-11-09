@@ -80,7 +80,7 @@ class TlsFront(
             client.startHandshake()
             upstream = Socket().apply {
                 tcpNoDelay = true
-                connect(InetSocketAddress(InetAddress.getLoopbackAddress(), targetPort), 5_000)
+                connect(InetSocketAddress(LOOPBACK_V4, targetPort), 5_000)
             }
             val up = upstream
             val toServer = pool.submit { pump(client.inputStream, up.outputStream) { closeQuietly(client, up) } }
@@ -115,6 +115,11 @@ class TlsFront(
     }
 
     companion object {
+        /**
+         * Ktor listens on 127.0.0.1. Not InetAddress.getLoopbackAddress(), which is
+         * ::1 on Android but 127.0.0.1 on desktop JVMs.
+         */
+        val LOOPBACK_V4: InetAddress = InetAddress.getByAddress("localhost", byteArrayOf(127, 0, 0, 1))
         private const val BACKLOG = 16
         private const val MAX_CONNECTIONS = 32
     }

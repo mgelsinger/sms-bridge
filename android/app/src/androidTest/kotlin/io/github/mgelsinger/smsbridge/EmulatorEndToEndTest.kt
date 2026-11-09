@@ -24,6 +24,7 @@ import io.github.mgelsinger.smsbridge.protocol.ThreadsPage
 import io.github.mgelsinger.smsbridge.protocol.WsFrame
 import io.github.mgelsinger.smsbridge.server.BridgeServer
 import io.github.mgelsinger.smsbridge.server.PinnedTrustManager
+import io.github.mgelsinger.smsbridge.server.TlsFront
 import java.net.InetAddress
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -64,7 +65,7 @@ class EmulatorEndToEndTest {
     private val hub = EventHub()
     private val pairing = PairingManager(InMemoryClientStore())
     private val api = BridgeApi(repo, pairing, confirmPairing = { true }, log = log)
-    private val server = BridgeServer(api, hub, identity, InetAddress.getLoopbackAddress(), 0, log)
+    private val server = BridgeServer(api, hub, identity, TlsFront.LOOPBACK_V4, 0, log)
     private val watcher = MessageWatcher(context, repo, hub, log, scope)
     private var port = 0
     private lateinit var http: OkHttpClient

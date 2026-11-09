@@ -47,7 +47,7 @@ class BridgeServerTest {
     @BeforeEach
     fun start() {
         val api = BridgeApi(repo, pairing, confirmPairing = { true }, log = { logs += it })
-        server = BridgeServer(api, hub, identity, InetAddress.getLoopbackAddress(), 0) { logs += it }
+        server = BridgeServer(api, hub, identity, TlsFront.LOOPBACK_V4, 0) { logs += it }
         port = server.start()
         token = pairing.issueToken("TEST-PC").second
     }
@@ -118,7 +118,7 @@ class BridgeServerTest {
 
     @Test
     fun plaintextConnectionsGetNothing() {
-        Socket(InetAddress.getLoopbackAddress(), port).use { s ->
+        Socket(TlsFront.LOOPBACK_V4, port).use { s ->
             s.soTimeout = 5_000
             s.getOutputStream().write("GET /threads HTTP/1.1\r\nHost: x\r\n\r\n".toByteArray())
             val buf = ByteArray(64)
