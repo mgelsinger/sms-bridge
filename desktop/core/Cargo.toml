@@ -1,0 +1,14 @@
+[package]
+name = "sms-bridge-core"
+description = "Platform-independent core of the sms-bridge desktop client: protocol, sync, storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

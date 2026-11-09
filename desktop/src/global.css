@@ -1,0 +1,23 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  --bg: #f7f7f8;
+  --fg: #1b1b1f;
+  --muted: #5f6068;
+  --accent: #2f6fde;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c20;
+    --fg: #ececf0;
+    --muted: #a0a1aa;
+    --accent: #7aa7ff;
+  }
+}
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}

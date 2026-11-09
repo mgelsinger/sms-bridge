@@ -1,0 +1,19 @@
+[package]
+name = "sms-bridge-desktop"
+description = "SMS Bridge for Windows: text from your Android phone number"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+sms-bridge-core = { path = "../core" }
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
