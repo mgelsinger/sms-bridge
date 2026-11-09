@@ -7,8 +7,22 @@ The phone runs a small service that reads and sends SMS through its own SIM.
 The Windows app pairs with it once (QR code plus a pinned certificate) and keeps
 a local copy of your conversations.
 
-**Status:** early development. Phase 0 (protocol, mock phone, CI) is done; see
-[docs/PLAN.md](docs/PLAN.md) for the roadmap.
+**Status:** early development. The phone side reads and pushes texts (phase 1);
+the Windows app is in progress. See [docs/PLAN.md](docs/PLAN.md).
+
+## Installing a dev build
+
+Every green build of `main` is published under
+[Releases](https://github.com/mgelsinger/sms-bridge/releases) as "Dev build".
+
+- **Phone:** open the `.apk` from the release on the phone and install it.
+  Android 10+ treats SMS access as a restricted permission; if the permission
+  prompt is refused, open App info, tap the three-dot menu, choose "Allow
+  restricted settings", and grant again.
+- **PC:** run the `-setup.exe` from the same release.
+
+Dev builds are signed with a public development key, so only install them
+from this repository's Releases page.
 
 ## What it will not do
 
