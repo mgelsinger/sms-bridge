@@ -90,7 +90,7 @@ Text frames only, one JSON object per frame, each with `protocol_version` and
 
 | `type` | Schema | When |
 | --- | --- | --- |
-| `hello` | `ws-hello` | First frame after the upgrade. Carries device name and the current sync cursor so the client can tell whether it missed anything. |
+| `hello` | `ws-hello` | First frame after the upgrade. Carries device name and the current sync cursor. Sync from the client's stored cursor up to this point; everything after arrives as `message` frames. A message stored right as the socket opens can arrive both ways or only live, so clients upsert by `id`. |
 | `message` | `ws-message` | A message appeared in the provider: inbound, sent from this client, or sent from the phone itself. |
 | `send_result` | `ws-send-result` | Progress of a client `send`. Sent once per state change. |
 | `thread_updated` | `ws-thread-updated` | Read state, snippet, or membership of a thread changed on the phone. Client refetches that thread's first page. |
