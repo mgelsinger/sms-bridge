@@ -15,11 +15,9 @@ import org.junit.jupiter.api.TestFactory
  * the schemas in lockstep.
  */
 class FixtureRoundTripTest {
-    private val fixtureRoot: File = run {
-        val anchor = javaClass.classLoader!!.getResource("threads-page/default.json")
-            ?: error("protocol fixtures are not on the test classpath")
-        File(anchor.toURI()).parentFile.parentFile
-    }
+    private val fixtureRoot: File = File(
+        System.getProperty("protocol.fixtures") ?: error("protocol.fixtures system property is not set"),
+    ).also { check(it.resolve("threads-page/default.json").isFile) { "no fixtures at $it" } }
 
     private val serializers: Map<String, KSerializer<*>> = mapOf(
         "message" to Message.serializer(),

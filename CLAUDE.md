@@ -13,8 +13,11 @@ the PC is a paired LAN client. Read docs/PLAN.md before any work.
 
 ## How to work
 - Work one phase at a time as defined in docs/PLAN.md. Finish the phase, run its
-  acceptance checks, write a short PHASE-N.md summary of what was built and what
-  was tested, commit with a tag `phase-N`, then stop and wait for review.
+  acceptance checks, write a short docs/PHASE-N.md summary of what was built and
+  what was tested, and tag the commit `phase-N`.
+- Keep going into the next phase when CI can prove the gate (unit tests,
+  emulator tests, Windows build). Stop and wait for review only when a gate
+  needs the real phone or the real PC.
 - Before adding a dependency, state what it is for and why the standard library
   or an existing dependency does not cover it. Prefer fewer, well-known crates
   and libraries.

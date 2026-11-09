@@ -32,13 +32,13 @@ android {
     buildFeatures {
         compose = true
     }
-    sourceSets {
-        // The shared protocol fixtures are test resources, so Kotlin models are
-        // checked against the same files as the schemas and the desktop app.
-        getByName("test").resources.srcDir("../../protocol/fixtures")
-    }
     testOptions {
-        unitTests.all { it.useJUnitPlatform() }
+        unitTests.all {
+            it.useJUnitPlatform()
+            // Kotlin models are checked against the same fixtures as the schemas
+            // and the desktop app.
+            it.systemProperty("protocol.fixtures", rootProject.file("../protocol/fixtures").absolutePath)
+        }
     }
 }
 
