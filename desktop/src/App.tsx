@@ -1,22 +1,42 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { api, events, type ConnState, type Paired } from "./lib/api";
+import { PairScreen } from "./components/PairScreen";
+import { Messenger } from "./components/Messenger";
 import styles from "./App.module.css";
 
 export function App() {
-  const [version, setVersion] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [paired, setPaired] = useState<Paired | null>(null);
+  const [conn, setConn] = useState<ConnState | null>(null);
 
   useEffect(() => {
-    invoke<number>("protocol_version")
-      .then(setVersion)
-      .catch(() => setVersion(null));
+    let alive = true;
+    api
+      .appState()
+      .then((s) => {
+        if (!alive) return;
+        setPaired(s.paired);
+        setConn(s.conn);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+    const off = events.conn((s) => setConn(s));
+    return () => {
+      alive = false;
+      void off.then((f) => f());
+    };
   }, []);
 
+  if (!loaded) return <main className={styles.center}>Loading…</main>;
+  if (!paired) return <PairScreen onPaired={setPaired} />;
   return (
-    <main className={styles.shell}>
-      <h1 className={styles.title}>SMS Bridge</h1>
-      <p className={styles.note}>
-        {version === null ? "Running outside Tauri." : `Protocol version ${version}.`} Pairing arrives in phase 2.
-      </p>
-    </main>
+    <Messenger
+      paired={paired}
+      conn={conn}
+      onUnpaired={() => {
+        setPaired(null);
+        setConn(null);
+      }}
+    />
   );
 }

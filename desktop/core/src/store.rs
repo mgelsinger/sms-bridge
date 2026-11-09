@@ -349,6 +349,15 @@ impl Store {
         rows.collect()
     }
 
+    /// Every (name, number) pair, for the new-message picker.
+    pub fn contacts(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT name, number FROM contacts ORDER BY name COLLATE NOCASE, number")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect()
+    }
+
     pub fn display_name(&self, address: &str) -> Result<Option<String>> {
         self.conn
             .query_row(

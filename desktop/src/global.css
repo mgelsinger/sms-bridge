@@ -2,22 +2,64 @@
   color-scheme: light dark;
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   font-size: 14px;
-  --bg: #f7f7f8;
+  --bg: #f3f3f3;
+  --panel: #ffffff;
   --fg: #1b1b1f;
-  --muted: #5f6068;
-  --accent: #2f6fde;
+  --muted: #616161;
+  --line: #e5e5e5;
+  --accent: #0f6cbd;
+  --accent-fg: #ffffff;
+  --bubble-in: #ebebeb;
+  --bubble-out: #0f6cbd;
+  --bubble-out-fg: #ffffff;
+  --danger: #c42b1c;
+  --ok: #107c10;
+  --hover: #f0f0f0;
+  --selected: #e6f0fa;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1c20;
-    --fg: #ececf0;
-    --muted: #a0a1aa;
-    --accent: #7aa7ff;
+    --bg: #1c1c1c;
+    --panel: #272727;
+    --fg: #f0f0f0;
+    --muted: #a8a8a8;
+    --line: #3a3a3a;
+    --accent: #60cdff;
+    --accent-fg: #000000;
+    --bubble-in: #3a3a3a;
+    --bubble-out: #005fb8;
+    --bubble-out-fg: #ffffff;
+    --danger: #ff99a4;
+    --ok: #6ccb5f;
+    --hover: #2f2f2f;
+    --selected: #1f3a52;
   }
 }
-html, body, #root {
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
   margin: 0;
   height: 100%;
   background: var(--bg);
   color: var(--fg);
+}
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

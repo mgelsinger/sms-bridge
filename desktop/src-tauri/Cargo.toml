@@ -11,7 +11,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 sms-bridge-core = { path = "../core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-notification = "2"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+tokio = { version = "1", features = ["sync", "time"] }
+log = "0.4"
 serde.workspace = true
 serde_json.workspace = true
 

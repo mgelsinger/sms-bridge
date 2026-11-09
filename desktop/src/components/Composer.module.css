@@ -1,0 +1,37 @@
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.input {
+  flex: 1;
+  resize: none;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--bg);
+  line-height: 1.35;
+  max-height: 140px;
+}
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.count {
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 14px;
+}
+.send {
+  padding: 7px 16px;
+  border-radius: 16px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}

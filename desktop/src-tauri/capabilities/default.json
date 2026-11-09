@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the main window",
+  "description": "Permissions for the main window. The web view has no network access; only the Rust core talks to the phone.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "notification:default"]
 }

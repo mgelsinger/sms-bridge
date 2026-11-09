@@ -175,6 +175,101 @@ fn map_io(e: std::io::Error) -> NetError {
     }
 }
 
+/// Records the certificate a server presents, and still checks that the server
+/// holds the matching key. Used only by [`probe_fingerprint`], which sends no
+/// data: the user compares the result with the phone's screen before pairing.
+#[derive(Debug)]
+struct RecordingVerifier {
+    seen: std::sync::Mutex<Option<String>>,
+    provider: Arc<CryptoProvider>,
+}
+
+impl ServerCertVerifier for RecordingVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        *self.seen.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some(sha256_hex(end_entity.as_ref()));
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.provider
+            .signature_verification_algorithms
+            .supported_schemes()
+    }
+}
+
+/// Completes a TLS handshake, sends nothing, and returns the fingerprint of the
+/// certificate the server proved it holds the key for. The caller must have a
+/// person confirm it against the phone's screen (or the QR code) before pinning.
+pub async fn probe_fingerprint(host: &str, port: u16) -> Result<String, NetError> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let verifier = Arc::new(RecordingVerifier {
+        seen: std::sync::Mutex::new(None),
+        provider: provider.clone(),
+    });
+    let config = ClientConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
+        .map_err(|e| NetError::Unreachable(e.to_string()))?
+        .dangerous()
+        .with_custom_certificate_verifier(verifier.clone())
+        .with_no_client_auth();
+    let name = ServerName::try_from(host.to_owned())
+        .map_err(|_| NetError::Unreachable("bad host".into()))?;
+    let fut = async {
+        let tcp = TcpStream::connect((host, port)).await.map_err(map_io)?;
+        let mut tls = TlsConnector::from(Arc::new(config))
+            .connect(name, tcp)
+            .await
+            .map_err(map_io)?;
+        let _ = tokio::io::AsyncWriteExt::shutdown(&mut tls).await;
+        Ok::<_, NetError>(())
+    };
+    tokio::time::timeout(CONNECT_TIMEOUT, fut)
+        .await
+        .map_err(|_| NetError::Timeout)??;
+    let seen = verifier
+        .seen
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    seen.ok_or_else(|| NetError::Unreachable("no certificate presented".into()))
+}
+
 /// A client for one paired (or about to pair) phone.
 #[derive(Clone)]
 pub struct PhoneClient {

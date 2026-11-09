@@ -3,7 +3,7 @@
 //! Needs Node 20+ and `npm ci` at the repository root.
 
 use futures_util::{SinkExt, StreamExt};
-use sms_bridge_core::net::{NetError, PhoneAddress, PhoneClient};
+use sms_bridge_core::net::{probe_fingerprint, NetError, PhoneAddress, PhoneClient};
 use sms_bridge_core::protocol::*;
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
@@ -164,4 +164,13 @@ async fn an_unknown_token_is_unauthorized() {
     assert!(err.is_unauthorized(), "{err:?}");
     let err = client.websocket().await.expect_err("401");
     assert!(err.is_unauthorized(), "{err:?}");
+}
+
+#[tokio::test]
+async fn probing_reads_the_fingerprint_without_sending_anything() {
+    let mock = start_mock(&[]);
+    let seen = probe_fingerprint(&mock.address.host, mock.address.port)
+        .await
+        .expect("probe");
+    assert_eq!(seen, mock.address.fingerprint);
 }

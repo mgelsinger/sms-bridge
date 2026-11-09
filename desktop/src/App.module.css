@@ -1,16 +1,6 @@
-.shell {
+.center {
   display: grid;
   place-content: center;
   height: 100%;
-  gap: 8px;
-  text-align: center;
-}
-.title {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0;
-}
-.note {
   color: var(--muted);
-  margin: 0;
 }

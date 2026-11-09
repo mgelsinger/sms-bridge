@@ -1,0 +1,137 @@
+.page {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 24px;
+}
+.card {
+  width: min(560px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px 28px;
+}
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.lead {
+  margin: 0 0 16px;
+  line-height: 1.45;
+}
+.h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.phone {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.phone:hover:not(:disabled) {
+  background: var(--hover);
+}
+.phoneName {
+  font-weight: 600;
+}
+.input,
+.textarea {
+  flex: 1;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+}
+.port {
+  flex: 0 0 80px;
+}
+.code {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 22px;
+  letter-spacing: 0.25em;
+  max-width: 180px;
+}
+.fingerprint {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 15px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+.details {
+  margin-top: 18px;
+}
+.details summary {
+  cursor: pointer;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.details .secondary {
+  margin-top: 8px;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.primary,
+.secondary {
+  padding: 7px 18px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.secondary {
+  background: var(--panel);
+}
+.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+}
+.muted {
+  color: var(--muted);
+  margin: 4px 0;
+}
+.error {
+  color: var(--danger);
+  margin: 14px 0 0;
+}

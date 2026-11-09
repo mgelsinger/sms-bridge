@@ -107,11 +107,15 @@ pub struct Engine {
     commands: mpsc::UnboundedReceiver<Command>,
 }
 
-pub fn spawn(
+/// Builds an engine without starting it, for hosts with their own runtime handle.
+pub fn engine(
     client: PhoneClient,
     store: Arc<Mutex<Store>>,
     events: Arc<dyn Events>,
-) -> mpsc::UnboundedSender<Command> {
+) -> (
+    mpsc::UnboundedSender<Command>,
+    impl std::future::Future<Output = ()> + Send + 'static,
+) {
     let (tx, rx) = mpsc::unbounded_channel();
     let engine = Engine {
         client,
@@ -119,7 +123,17 @@ pub fn spawn(
         events,
         commands: rx,
     };
-    tokio::spawn(engine.run());
+    (tx, engine.run())
+}
+
+/// Builds and spawns an engine on the current Tokio runtime.
+pub fn spawn(
+    client: PhoneClient,
+    store: Arc<Mutex<Store>>,
+    events: Arc<dyn Events>,
+) -> mpsc::UnboundedSender<Command> {
+    let (tx, run) = engine(client, store, events);
+    tokio::spawn(run);
     tx
 }
 
