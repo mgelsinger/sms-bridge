@@ -73,7 +73,7 @@ enum class ErrorCode {
 data class MmsPart(
     @SerialName("part_id") val partId: Long,
     @SerialName("content_type") val contentType: String,
-    val size: Long,
+    val size: Long?,
     val name: String?,
 )
 

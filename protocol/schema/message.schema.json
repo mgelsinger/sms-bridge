@@ -54,8 +54,12 @@
             "maxLength": 128
           },
           "size": {
-            "type": "integer",
-            "minimum": 0
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Bytes, or null when the phone cannot tell without reading the part."
           },
           "name": {
             "type": [

@@ -56,6 +56,10 @@ HTTP 401 with error `unauthorized`; the WebSocket upgrade is refused with 401.
   phone cannot decode gets 400 `bad_cursor`, and the client restarts from no
   cursor.
 
+Message dates are epoch milliseconds for both kinds. Android stores MMS dates in
+seconds; the phone converts them. MMS part `size` is `null` when the phone
+cannot tell the size without reading the part.
+
 ## REST endpoints
 
 | Request | Success body (schema) | Notes |
@@ -64,7 +68,7 @@ HTTP 401 with error `unauthorized`; the WebSocket upgrade is refused with 401.
 | `GET /status` | `status` | |
 | `GET /threads?limit=&cursor=` | `threads-page` | Newest activity first. `limit` 1-200, default 50. |
 | `GET /threads/{thread_id}/messages?limit=&cursor=` | `messages-page` | Newest first. `limit` 1-500, default 100. |
-| `GET /messages?cursor=&limit=` | `sync-page` | Incremental sync, oldest first. No `cursor` means "start from now": returns no messages and a cursor for the newest message. |
+| `GET /messages?cursor=&limit=` | `sync-page` | Incremental sync. No `cursor` means "start from now": returns no messages and a cursor for the newest message. Messages come in id order within each kind (all new SMS, then all new MMS), not date order; clients sort by `date`. |
 | `GET /contacts` | `contacts` | Contacts that have at least one phone number. |
 | `GET /mms/{part_id}` | raw bytes | `Content-Type` is the part's MIME type. |
 

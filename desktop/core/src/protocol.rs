@@ -69,7 +69,7 @@ pub enum ErrorCode {
 pub struct MmsPart {
     pub part_id: u64,
     pub content_type: String,
-    pub size: u64,
+    pub size: Option<u64>,
     pub name: Option<String>,
 }
 
