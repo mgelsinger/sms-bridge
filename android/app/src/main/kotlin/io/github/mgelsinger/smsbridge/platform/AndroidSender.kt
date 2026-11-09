@@ -89,21 +89,23 @@ class AndroidSender(
         }
         val sms = smsManager()
         val parts = sms.divideMessage(frame.body)
-        val queued = tracker.begin(frame.clientId, address, frame.body, parts.size)
         val sent = ArrayList(parts.indices.map { intent(ACTION_SENT, frame.clientId, it) })
         val delivered = ArrayList(parts.indices.map { intent(ACTION_DELIVERED, frame.clientId, it) })
-        return try {
+        // Publish "queued" on the same stream as the later results, before the radio
+        // can report "sent", so every PC sees them in order.
+        hub.publish(tracker.begin(frame.clientId, address, frame.body, parts.size))
+        try {
             if (parts.size == 1) {
                 sms.sendTextMessage(address, null, frame.body, sent[0], delivered[0])
             } else {
                 sms.sendMultipartTextMessage(address, null, parts, sent, delivered)
             }
             log("sending ${parts.size} part(s) for ${client.name}")
-            listOf(queued)
         } catch (e: Exception) {
             log("send refused by the system: ${e.javaClass.simpleName}")
-            listOfNotNull(queued, tracker.partSent(frame.clientId, false, e.javaClass.simpleName))
+            tracker.partSent(frame.clientId, false, e.javaClass.simpleName)?.let(hub::publish)
         }
+        return emptyList()
     }
 
     private fun failure(frame: SendFrame, why: String): SendResultFrame {

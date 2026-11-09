@@ -275,10 +275,12 @@ impl Store {
         Ok(())
     }
 
+    /// Status only moves forward: pending, sent, delivered; failed is final.
     pub fn set_message_status(&self, id: &str, status: MessageStatus) -> Result<()> {
         self.conn.execute(
-            "UPDATE messages SET status = ?2 WHERE id = ?1",
-            params![id, enum_str(&status)],
+            "UPDATE messages SET status = ?2 WHERE id = ?1 AND ?3 >= CASE status
+                 WHEN 'pending' THEN 0 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'failed' THEN 3 ELSE -1 END",
+            params![id, enum_str(&status), message_rank(status)],
         )?;
         Ok(())
     }
@@ -300,6 +302,8 @@ impl Store {
         Ok(())
     }
 
+    /// Applies a send result. Status only moves forward (queued, sent, delivered;
+    /// failed is final), so a late or repeated result cannot undo progress.
     pub fn outbox_update(
         &self,
         client_id: &str,
@@ -307,13 +311,17 @@ impl Store {
         message_id: Option<&str>,
         error: Option<&str>,
     ) -> Result<bool> {
+        self.conn.execute(
+            "UPDATE outbox SET message_id = COALESCE(message_id, ?2) WHERE client_id = ?1",
+            params![client_id, message_id],
+        )?;
         let n = self.conn.execute(
-            "UPDATE outbox SET status = ?2, message_id = COALESCE(?3, message_id), error = ?4 WHERE client_id = ?1",
-            params![client_id, enum_str(&status), message_id, error],
+            "UPDATE outbox SET status = ?2, error = ?3 WHERE client_id = ?1 AND ?4 >= CASE status
+                 WHEN 'queued' THEN 0 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 ELSE 3 END",
+            params![client_id, enum_str(&status), error, send_rank(status)],
         )?;
         Ok(n > 0)
     }
-
     pub fn outbox_get(&self, client_id: &str) -> Result<Option<OutboxItem>> {
         self.conn
             .query_row(
@@ -511,6 +519,24 @@ impl Store {
     }
 }
 
+fn send_rank(s: SendStatus) -> i64 {
+    match s {
+        SendStatus::Queued => 0,
+        SendStatus::Sent => 1,
+        SendStatus::Delivered => 2,
+        SendStatus::Failed => 3,
+    }
+}
+
+fn message_rank(s: MessageStatus) -> i64 {
+    match s {
+        MessageStatus::Pending => 0,
+        MessageStatus::Sent => 1,
+        MessageStatus::Delivered => 2,
+        MessageStatus::Failed => 3,
+    }
+}
+
 const OUTBOX_COLUMNS: &str =
     "client_id, thread_id, to_address, body, created_at, status, message_id, error";
 
@@ -692,6 +718,49 @@ mod tests {
         assert!(
             s.outbox_unconfirmed().expect("pending").is_empty(),
             "failed sends are not replayed automatically"
+        );
+    }
+
+    #[test]
+    fn send_status_never_moves_backwards() {
+        let mut s = store();
+        s.outbox_add("c3", Some(11), None, "x", 500)
+            .expect("outbox");
+        s.outbox_update("c3", SendStatus::Sent, Some("sms:5"), None)
+            .expect("sent");
+        s.outbox_update("c3", SendStatus::Queued, None, None)
+            .expect("late queued");
+        assert_eq!(
+            s.outbox_get("c3").expect("get").map(|o| o.status),
+            Some(SendStatus::Sent)
+        );
+        assert!(
+            s.outbox_unconfirmed().expect("pending").is_empty(),
+            "a late queued must not make it replay"
+        );
+        s.outbox_update("c3", SendStatus::Delivered, None, None)
+            .expect("delivered");
+        s.outbox_update("c3", SendStatus::Sent, None, None)
+            .expect("repeat sent");
+        assert_eq!(
+            s.outbox_get("c3").expect("get").map(|o| o.status),
+            Some(SendStatus::Delivered)
+        );
+        assert_eq!(
+            s.outbox_get("c3").expect("get").and_then(|o| o.message_id),
+            Some("sms:5".into())
+        );
+
+        let mut echo = msg("sms:5", 11, Direction::Out, 510, "x");
+        echo.status = Some(MessageStatus::Sent);
+        s.upsert_messages(&[echo]).expect("echo");
+        s.set_message_status("sms:5", MessageStatus::Delivered)
+            .expect("delivered");
+        s.set_message_status("sms:5", MessageStatus::Sent)
+            .expect("late sent");
+        assert_eq!(
+            s.messages(11, None, 5).expect("messages")[0].status,
+            Some(MessageStatus::Delivered)
         );
     }
 
