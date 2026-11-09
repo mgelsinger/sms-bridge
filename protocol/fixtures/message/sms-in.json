@@ -1,0 +1,16 @@
+{
+  "id": "sms:1007",
+  "thread_id": 11,
+  "kind": "sms",
+  "direction": "in",
+  "address": "+15855550101",
+  "participants": [
+    "+15855550101"
+  ],
+  "body": "Bring the good thermos ☕",
+  "parts": [],
+  "date": 1794146282000,
+  "read": false,
+  "status": null,
+  "client_id": null
+}

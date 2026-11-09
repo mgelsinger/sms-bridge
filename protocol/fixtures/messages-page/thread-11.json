@@ -1,0 +1,55 @@
+{
+  "protocol_version": 1,
+  "thread_id": 11,
+  "messages": [
+    {
+      "id": "sms:1007",
+      "thread_id": 11,
+      "kind": "sms",
+      "direction": "in",
+      "address": "+15855550101",
+      "participants": [
+        "+15855550101"
+      ],
+      "body": "Bring the good thermos ☕",
+      "parts": [],
+      "date": 1794146282000,
+      "read": false,
+      "status": null,
+      "client_id": null
+    },
+    {
+      "id": "sms:1002",
+      "thread_id": 11,
+      "kind": "sms",
+      "direction": "out",
+      "address": "+15855550101",
+      "participants": [
+        "+15855550101"
+      ],
+      "body": "Yep, 10am at the trailhead",
+      "parts": [],
+      "date": 1794063880000,
+      "read": true,
+      "status": "delivered",
+      "client_id": null
+    },
+    {
+      "id": "sms:1001",
+      "thread_id": 11,
+      "kind": "sms",
+      "direction": "in",
+      "address": "+15855550101",
+      "participants": [
+        "+15855550101"
+      ],
+      "body": "Are we still on for Saturday?",
+      "parts": [],
+      "date": 1794063731000,
+      "read": true,
+      "status": null,
+      "client_id": null
+    }
+  ],
+  "next_cursor": null
+}

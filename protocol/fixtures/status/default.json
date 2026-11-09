@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "device_name": "Pixel 9",
+  "battery_percent": 76,
+  "charging": false,
+  "signal_level": 3,
+  "sim_state": "ready",
+  "is_default_sms_app": false,
+  "uptime_s": 86400,
+  "paired_clients": 1
+}

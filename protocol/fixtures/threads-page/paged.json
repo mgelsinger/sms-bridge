@@ -1,0 +1,28 @@
+{
+  "protocol_version": 1,
+  "threads": [
+    {
+      "id": 11,
+      "participants": [
+        "+15855550101"
+      ],
+      "snippet": "Bring the good thermos ☕",
+      "date": 1794146282000,
+      "unread_count": 1,
+      "message_count": 3
+    },
+    {
+      "id": 13,
+      "participants": [
+        "+13155550103",
+        "+15855550101",
+        "+15855550102"
+      ],
+      "snippet": "Nice! Where'd you find it?",
+      "date": 1794141075000,
+      "unread_count": 0,
+      "message_count": 2
+    }
+  ],
+  "next_cursor": "t:2"
+}

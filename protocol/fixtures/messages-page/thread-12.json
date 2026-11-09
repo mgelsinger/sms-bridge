@@ -1,0 +1,39 @@
+{
+  "protocol_version": 1,
+  "thread_id": 12,
+  "messages": [
+    {
+      "id": "sms:1004",
+      "thread_id": 12,
+      "kind": "sms",
+      "direction": "out",
+      "address": "+15855550102",
+      "participants": [
+        "+15855550102"
+      ],
+      "body": "Ubiquiti UDM Pro. Config backup is in the shared folder.",
+      "parts": [],
+      "date": 1794003331000,
+      "read": true,
+      "status": "sent",
+      "client_id": null
+    },
+    {
+      "id": "sms:1003",
+      "thread_id": 12,
+      "kind": "sms",
+      "direction": "in",
+      "address": "+15855550102",
+      "participants": [
+        "+15855550102"
+      ],
+      "body": "Can you send me the router model?",
+      "parts": [],
+      "date": 1794003000000,
+      "read": true,
+      "status": null,
+      "client_id": null
+    }
+  ],
+  "next_cursor": null
+}

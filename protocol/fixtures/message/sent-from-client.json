@@ -1,0 +1,16 @@
+{
+  "id": "sms:1008",
+  "thread_id": 11,
+  "kind": "sms",
+  "direction": "out",
+  "address": "+15855550101",
+  "participants": [
+    "+15855550101"
+  ],
+  "body": "On my way",
+  "parts": [],
+  "date": 1794146700000,
+  "read": true,
+  "status": "sent",
+  "client_id": "3f0e6c1a-9b2d-4c7e-8a51-2d6f0b9e4c13"
+}

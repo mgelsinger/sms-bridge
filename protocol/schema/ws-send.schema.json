@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-send.schema.json",
+  "title": "WebSocket send (client to phone)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "send"
+    },
+    "client_id": {
+      "$ref": "common.schema.json#/$defs/client_id"
+    },
+    "thread_id": {
+      "$ref": "common.schema.json#/$defs/thread_id"
+    },
+    "to": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/address"
+      },
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true,
+      "description": "Version 1 sends SMS to one recipient; group sends are MMS and arrive in a later version."
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 5000
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "client_id",
+    "body"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "thread_id"
+      ],
+      "not": {
+        "required": [
+          "to"
+        ]
+      }
+    },
+    {
+      "required": [
+        "to"
+      ],
+      "not": {
+        "required": [
+          "thread_id"
+        ]
+      }
+    }
+  ]
+}

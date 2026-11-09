@@ -1,0 +1,8 @@
+{
+  "protocol_version": 1,
+  "host": "192.168.1.42",
+  "port": 8765,
+  "fingerprint": "9f2c00000000000000000000000000000000000000000000000000000000a1b3",
+  "pairing_code": "042917",
+  "device_name": "Pixel 9"
+}

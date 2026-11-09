@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-ping.schema.json",
+  "title": "WebSocket ping (client to phone)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "ping"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type"
+  ],
+  "additionalProperties": false
+}

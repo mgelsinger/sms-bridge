@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-pong.schema.json",
+  "title": "WebSocket pong (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "pong"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/messages-page.schema.json",
+  "title": "GET /threads/{id}/messages response body",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "thread_id": {
+      "$ref": "common.schema.json#/$defs/thread_id"
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "$ref": "message.schema.json"
+      }
+    },
+    "next_cursor": {
+      "$ref": "common.schema.json#/$defs/nullable_cursor"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "thread_id",
+    "messages",
+    "next_cursor"
+  ],
+  "additionalProperties": false
+}

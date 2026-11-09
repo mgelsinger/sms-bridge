@@ -1,0 +1,23 @@
+{
+  "id": "sms:1001",
+  "thread_id": 11,
+  "kind": "sms",
+  "direction": "in",
+  "address": "+15855550101",
+  "participants": [
+    "+15855550101"
+  ],
+  "body": "Are we still on for Saturday?",
+  "parts": [
+    {
+      "part_id": 1,
+      "content_type": "image/png",
+      "size": 1,
+      "name": null
+    }
+  ],
+  "date": 1794063731000,
+  "read": true,
+  "status": null,
+  "client_id": null
+}

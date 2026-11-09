@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-mark-read.schema.json",
+  "title": "WebSocket mark read (client to phone)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "mark_read"
+    },
+    "thread_id": {
+      "$ref": "common.schema.json#/$defs/thread_id"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "thread_id"
+  ],
+  "additionalProperties": false
+}

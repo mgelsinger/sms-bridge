@@ -1,0 +1,27 @@
+{
+  "protocol_version": 1,
+  "contacts": [
+    {
+      "id": 1,
+      "name": "Alex Rivera",
+      "numbers": [
+        "+15855550101"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Sam Chen",
+      "numbers": [
+        "+15855550102",
+        "+15855550199"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Jordan Price",
+      "numbers": [
+        "+13155550103"
+      ]
+    }
+  ]
+}

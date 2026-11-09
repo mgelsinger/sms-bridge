@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/common.schema.json",
+  "title": "Shared definitions",
+  "$defs": {
+    "protocol_version": {
+      "const": 1
+    },
+    "address": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "E.164 when the phone can normalize it, otherwise the raw sender (short code or alphanumeric)."
+    },
+    "message_id": {
+      "type": "string",
+      "pattern": "^(sms|mms):[0-9]+$"
+    },
+    "thread_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "epoch_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "nullable_cursor": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "client_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 of the DER certificate."
+    },
+    "send_status": {
+      "enum": [
+        "queued",
+        "sent",
+        "delivered",
+        "failed"
+      ]
+    },
+    "error_code": {
+      "enum": [
+        "bad_request",
+        "bad_cursor",
+        "unauthorized",
+        "pairing_invalid",
+        "pairing_rejected",
+        "rate_limited",
+        "not_found",
+        "unsupported_version",
+        "not_default_sms_app",
+        "send_failed",
+        "internal"
+      ]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-send-result.schema.json",
+  "title": "WebSocket send result (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "send_result"
+    },
+    "client_id": {
+      "$ref": "common.schema.json#/$defs/client_id"
+    },
+    "message_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/message_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "$ref": "common.schema.json#/$defs/send_status"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "client_id",
+    "message_id",
+    "status"
+  ],
+  "additionalProperties": false
+}

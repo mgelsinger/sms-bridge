@@ -1,0 +1,23 @@
+{
+  "protocol_version": 1,
+  "thread_id": 14,
+  "messages": [
+    {
+      "id": "sms:1005",
+      "thread_id": 14,
+      "kind": "sms",
+      "direction": "in",
+      "address": "72975",
+      "participants": [
+        "72975"
+      ],
+      "body": "Your verification code is 482913. It expires in 10 minutes.",
+      "parts": [],
+      "date": 1794128400000,
+      "read": true,
+      "status": null,
+      "client_id": null
+    }
+  ],
+  "next_cursor": null
+}

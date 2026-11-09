@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/thread.schema.json",
+  "title": "Thread summary",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "common.schema.json#/$defs/thread_id"
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/address"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "snippet": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "date": {
+      "$ref": "common.schema.json#/$defs/epoch_ms"
+    },
+    "unread_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "message_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "id",
+    "participants",
+    "snippet",
+    "date",
+    "unread_count",
+    "message_count"
+  ],
+  "additionalProperties": false
+}

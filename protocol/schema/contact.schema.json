@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/contact.schema.json",
+  "title": "Contact",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "numbers": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/address"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "numbers"
+  ],
+  "additionalProperties": false
+}

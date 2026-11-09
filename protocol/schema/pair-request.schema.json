@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/pair-request.schema.json",
+  "title": "POST /pair request body",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "pairing_code": {
+      "type": "string",
+      "pattern": "^[0-9]{6}$"
+    },
+    "client_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "protocol_version",
+    "pairing_code",
+    "client_name"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/message.schema.json",
+  "title": "Message",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "common.schema.json#/$defs/message_id"
+    },
+    "thread_id": {
+      "$ref": "common.schema.json#/$defs/thread_id"
+    },
+    "kind": {
+      "enum": [
+        "sms",
+        "mms"
+      ]
+    },
+    "direction": {
+      "enum": [
+        "in",
+        "out"
+      ]
+    },
+    "address": {
+      "$ref": "common.schema.json#/$defs/address"
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/address"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "body": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "part_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content_type": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "part_id",
+          "content_type",
+          "size",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "date": {
+      "$ref": "common.schema.json#/$defs/epoch_ms"
+    },
+    "read": {
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "sent",
+        "delivered",
+        "failed",
+        null
+      ]
+    },
+    "client_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/client_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "thread_id",
+    "kind",
+    "direction",
+    "address",
+    "participants",
+    "body",
+    "parts",
+    "date",
+    "read",
+    "status",
+    "client_id"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "sms"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parts": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

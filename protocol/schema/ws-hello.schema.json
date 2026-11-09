@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-hello.schema.json",
+  "title": "WebSocket hello (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "hello"
+    },
+    "device_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "sync_cursor": {
+      "$ref": "common.schema.json#/$defs/cursor"
+    },
+    "is_default_sms_app": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "device_name",
+    "sync_cursor",
+    "is_default_sms_app"
+  ],
+  "additionalProperties": false
+}

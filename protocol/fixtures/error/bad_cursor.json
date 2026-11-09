@@ -1,0 +1,7 @@
+{
+  "protocol_version": 1,
+  "error": {
+    "code": "bad_cursor",
+    "message": "bad cursor"
+  }
+}

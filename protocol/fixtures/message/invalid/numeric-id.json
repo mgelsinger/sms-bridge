@@ -1,0 +1,16 @@
+{
+  "id": 1001,
+  "thread_id": 11,
+  "kind": "sms",
+  "direction": "in",
+  "address": "+15855550101",
+  "participants": [
+    "+15855550101"
+  ],
+  "body": "Are we still on for Saturday?",
+  "parts": [],
+  "date": 1794063731000,
+  "read": true,
+  "status": null,
+  "client_id": null
+}

@@ -1,0 +1,7 @@
+{
+  "protocol_version": 1,
+  "type": "error",
+  "code": "not_default_sms_app",
+  "message": "Only the default SMS app can mark messages read",
+  "client_id": null
+}

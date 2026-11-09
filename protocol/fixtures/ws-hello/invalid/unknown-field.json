@@ -1,0 +1,8 @@
+{
+  "protocol_version": 1,
+  "type": "hello",
+  "device_name": "Pixel 9",
+  "sync_cursor": "x",
+  "is_default_sms_app": false,
+  "extra": 1
+}

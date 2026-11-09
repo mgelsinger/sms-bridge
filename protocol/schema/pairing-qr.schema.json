@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/pairing-qr.schema.json",
+  "title": "Pairing QR payload",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "fingerprint": {
+      "$ref": "common.schema.json#/$defs/fingerprint"
+    },
+    "pairing_code": {
+      "type": "string",
+      "pattern": "^[0-9]{6}$"
+    },
+    "device_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "protocol_version",
+    "host",
+    "port",
+    "fingerprint",
+    "pairing_code",
+    "device_name"
+  ],
+  "additionalProperties": false
+}

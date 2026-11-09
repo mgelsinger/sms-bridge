@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-status.schema.json",
+  "title": "WebSocket status (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "status"
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "battery_percent": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "charging": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "signal_level": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4
+        },
+        "sim_state": {
+          "enum": [
+            "ready",
+            "absent",
+            "locked",
+            "unknown"
+          ]
+        },
+        "is_default_sms_app": {
+          "type": "boolean"
+        },
+        "uptime_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "paired_clients": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "device_name",
+        "battery_percent",
+        "charging",
+        "signal_level",
+        "sim_state",
+        "is_default_sms_app",
+        "uptime_s",
+        "paired_clients"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "status"
+  ],
+  "additionalProperties": false
+}

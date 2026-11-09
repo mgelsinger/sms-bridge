@@ -1,0 +1,7 @@
+{
+  "protocol_version": 1,
+  "type": "send",
+  "client_id": "123",
+  "thread_id": 11,
+  "body": "x"
+}

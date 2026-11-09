@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/error.schema.json",
+  "title": "Error response body",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "common.schema.json#/$defs/error_code"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocol_version",
+    "error"
+  ],
+  "additionalProperties": false
+}

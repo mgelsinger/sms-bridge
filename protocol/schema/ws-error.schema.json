@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-error.schema.json",
+  "title": "WebSocket error (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "error"
+    },
+    "code": {
+      "$ref": "common.schema.json#/$defs/error_code"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "client_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/client_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "code",
+    "message"
+  ],
+  "additionalProperties": false
+}

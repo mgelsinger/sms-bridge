@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/contacts.schema.json",
+  "title": "GET /contacts response body",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "contacts": {
+      "type": "array",
+      "items": {
+        "$ref": "contact.schema.json"
+      }
+    }
+  },
+  "required": [
+    "protocol_version",
+    "contacts"
+  ],
+  "additionalProperties": false
+}
