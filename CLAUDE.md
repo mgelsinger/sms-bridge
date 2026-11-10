@@ -1,7 +1,8 @@
 # sms-bridge
 
 Self-hosted Android-to-Windows SMS bridge. The phone is the source of truth;
-the PC is a paired LAN client. Read docs/PLAN.md before any work.
+the PC is a paired LAN client. Read docs/STATUS.md, then docs/PLAN.md, before
+any work.
 
 ## Non-negotiables
 - No network calls to anything but the paired phone. No telemetry, no update
