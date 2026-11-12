@@ -59,14 +59,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
-      - name: Lint and build the installer
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - name: Install the mock phone (used by the core integration tests)
+        run: npm ci
+      - name: Test, lint, and build the installer
         working-directory: desktop
         shell: bash
         run: |
           set -o pipefail
           {
             npm ci &&
+            cargo test -p sms-bridge-core &&
             cargo clippy --workspace --all-targets -- -D warnings &&
             npx tauri build --bundles nsis
           } 2>&1 | tee ../windows.log

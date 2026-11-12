@@ -28,6 +28,9 @@ function call(method, path, { body, auth = token, pin } = {}) {
         method,
         path,
         headers: { ...(auth ? { authorization: `Bearer ${auth}` } : {}), ...(body ? { "content-type": "application/json" } : {}) },
+        // A fresh connection per call. The shared agent reuses sockets and TLS sessions, and
+        // Node skips checkServerIdentity on a reused one, so a wrong pin would go unnoticed.
+        agent: false,
         ...tlsFor(pin ?? phone.fingerprint),
       },
       (res) => {

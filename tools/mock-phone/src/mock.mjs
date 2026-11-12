@@ -390,8 +390,9 @@ export async function startMockPhone(options = {}) {
   server.on("upgrade", (req, socket, head) => {
     const path = new URL(req.url, "https://phone").pathname;
     if (path !== "/ws" || !authorized(req)) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
-      socket.destroy();
+      // end(), not write() then destroy(): destroying with the reply still buffered resets
+      // the connection on Windows, and the client sees a network error instead of the 401.
+      socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       opts.log(`WS upgrade ${path} 401`);
       return;
     }
