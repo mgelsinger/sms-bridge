@@ -3,6 +3,32 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Emulated desk run, 2026-11-11
+
+**A local emulator run comes before the real desk session.** Mickey asked for
+proof on his own PC before spending time on the phone. The release APK
+(dev-e7b1c25) ran on an Android 14 emulator on the PC, the installed Windows
+build paired with it through an adb port forward, and both were driven the way
+a person would: taps over adb on the phone, clicks and typing through
+WebView2's DevTools port on the PC. This is the first time the real Windows
+client talked to the real phone app; CI only pairs each with a stand-in. It
+covers checklist sections 1, 2, 4, and 5 and the receive path of section 3. It
+cannot cover real Wi-Fi and mDNS discovery, the restricted-settings step,
+carrier delivery, Windows toasts, or background survival on real hardware, so
+the desk checklist still closes the phase 2 and 3 gates.
+
+**Sends are accepted while the engine is still connecting.** The engine used
+to read commands only between connection attempts and while connected. A send
+made during an attempt (up to 10 seconds when the phone has gone quiet) showed
+no bubble and was not in the outbox until the attempt ended. The connection
+attempt now runs alongside the command queue, and the outbox replay sends
+whatever was queued meanwhile.
+
+**The desktop core tests also run on Windows in CI.** They ran only on Linux,
+which hid two test-harness bugs that fail on Windows: the mock phone reset the
+connection instead of delivering its 401, and the mock's own pinning test
+reused a TLS session, which skips the fingerprint check in Node.
+
 ## RCS, 2026-11-09
 
 **RCS is turned off on the phone rather than bridged.** RCS messages are not

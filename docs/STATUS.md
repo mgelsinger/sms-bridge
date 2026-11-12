@@ -2,15 +2,24 @@
 
 Read this first in a new session. Update it whenever the state below changes.
 
-Last updated: 2026-11-09.
+Last updated: 2026-11-11.
 
 ## Where things stand
 
 - Phases 0 and 1 are done and tagged.
 - Phases 2 (PC read path) and 3 (send and reply) are built and green in CI.
   Their gates need the real phone and PC: work through
-  [DESK-CHECKLIST.md](DESK-CHECKLIST.md). Nobody has run the Windows app on a
-  real machine yet, and the phone app has only run on an emulator.
+  [DESK-CHECKLIST.md](DESK-CHECKLIST.md).
+- On 2026-11-11 the installed Windows build (dev-e7b1c25) ran on Mickey's PC
+  against the release APK on a local Android 14 emulator. Pairing, first sync,
+  inbound (0.6 s, screen off), reply, new conversation, connection loss with
+  one copy sent, restart after reboot, and revoke all worked. See the
+  "Emulated desk run" entry in [DECISIONS.md](DECISIONS.md) for what that run
+  cannot show. The phone app has still not run on the real phone.
+- That run found three things, fixed with regression tests: sends made while
+  the PC was still connecting were not queued, the "Allow background use"
+  button stayed after it was accepted, and two mock-phone test bugs that only
+  fail on Windows. Use a dev build newer than dev-e7b1c25 for the desk session.
 - After the checklist passes: write `docs/PHASE-2.md` and `docs/PHASE-3.md`
   (CI tags the commits that add them), then start phase 4 from
   [PLAN.md](PLAN.md).
