@@ -3,6 +3,38 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## First run on the real phone, 2026-11-11
+
+**The thread list is completed from the messages, not taken from the system's
+thread index alone.** On Mickey's Pixel 9 Pro Fold with Android 17, the index
+(`content://mms-sms/conversations?simple=true`) and the canonical address table
+listed 30 of 42 conversations to the app: every thread created since the
+Android 17 update was left out (the index has a new `read_restriction` column),
+while the `sms` and `mms` rows of those threads stayed readable. The PC never
+saw the newest conversations and could not reply into them. The phone now
+tallies threads from the message rows and rebuilds any thread the index does
+not list: participants from the SMS addresses, or for MMS-only threads from the
+senders of inbound and recipients of outbound messages (the newest 20), which
+never needs this phone's own number. Indexed threads are passed through
+unchanged, so older Android versions behave as before. The result is cached
+for 5 seconds while no message is added, because message pages and sync ask
+for it on every call. Known gap: in an MMS-only group this phone never wrote
+to, members who never wrote are not found.
+
+**The PC fetches history for threads that are listed without any.** When the
+phone starts listing a thread the PC has no messages for, the sync cursor is
+already past its messages. Catch-up now fetches the first page for such
+threads, as the first sync does.
+
+**Android 17 withholds some MMS rows from the app.** 86 MMS messages in two
+conversations carry `restricted = 1` and are not returned to an app that is
+not the default SMS app. What marks them is not known yet. They do not show on
+the PC. Not fixable from the app side as far as is known; to be researched.
+
+**Wireless debugging is how the agent reaches the phone.** Mickey has no USB
+data cable. `adb pair` over Wi-Fi (he types the code) gives install and log
+access; permission prompts and pairing approval stay with him.
+
 ## Emulated desk run, 2026-11-11
 
 **A local emulator run comes before the real desk session.** Mickey asked for

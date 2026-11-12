@@ -20,6 +20,12 @@ Last updated: 2026-11-11.
   the PC was still connecting were not queued, the "Allow background use"
   button stayed after it was accepted, and two mock-phone test bugs that only
   fail on Windows. Use a dev build newer than dev-e7b1c25 for the desk session.
+- The desk session started the same day on the real phone (Pixel 9 Pro Fold,
+  Android 17), reached over wireless debugging. Checklist sections 1 and 2
+  passed: setup, discovery over mDNS, fingerprint match, pairing, first sync in
+  about 19 seconds. Section 2 exposed that Android 17 hides newer threads from
+  the app's thread list; fixed on both sides (see DECISIONS.md). Sections 3 to
+  6 are still open.
 - After the checklist passes: write `docs/PHASE-2.md` and `docs/PHASE-3.md`
   (CI tags the commits that add them), then start phase 4 from
   [PLAN.md](PLAN.md).
@@ -48,6 +54,11 @@ Last updated: 2026-11-11.
 - Dependabot PRs #6 (npm) and #7 (Gradle) are open and unreviewed. Handle
   them after the desk session.
 - RCS is off on Mickey's phone by decision (see DECISIONS.md).
+- Android 17 withholds 86 MMS rows flagged `restricted` from the app (two
+  conversations). Find out what the flag means.
+- CI's emulator is API 34. The Android 17 thread-index behaviour is covered
+  only by JVM tests of the merge logic; an API 37 emulator job would cover it
+  for real.
 - The plan's 2-second inbound latency has not been measured on real hardware.
 - The Windows installer is unsigned and dev APKs use a public dev key.
   Phase 4 covers signed releases.
