@@ -408,6 +408,18 @@ impl Store {
         rows.collect()
     }
 
+    /// Threads the phone lists as having messages while none of them are stored here,
+    /// newest first. Their history was never fetched.
+    pub fn threads_without_messages(&self) -> Result<Vec<u64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id FROM threads t
+             WHERE t.message_count > 0 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = t.id)
+             ORDER BY t.date DESC, t.id DESC",
+        )?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        rows.collect()
+    }
+
     /// Newest first, then the unconfirmed outbox entries for this thread at the end
     /// (they are the newest). `before` pages back by date.
     pub fn messages(

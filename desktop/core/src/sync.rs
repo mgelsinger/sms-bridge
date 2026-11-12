@@ -378,6 +378,33 @@ impl Core {
         // Thread snippets and unread counts can change without new messages.
         let threads = self.client.threads(200, None).await?;
         self.db(|s| s.upsert_threads(&threads.threads))?;
+        // A thread can be listed without its history ever having been fetched: one the
+        // phone only started reporting after its app was updated, for example. The sync
+        // cursor is already past its messages, so fetch them the way the first sync does.
+        let unfetched = self.db(|s| s.threads_without_messages())?;
+        for id in &unfetched {
+            let msgs = match self
+                .client
+                .thread_messages(*id, INITIAL_MESSAGES_PER_THREAD, None)
+                .await
+            {
+                Ok(page) => page,
+                // Gone between the list and this request; there is nothing to fetch.
+                Err(NetError::Refused {
+                    code: ErrorCode::NotFound,
+                    ..
+                }) => continue,
+                Err(e) => return Err(e.into()),
+            };
+            self.db(|s| s.upsert_messages(&msgs.messages))?;
+            if let Some(next) = &msgs.next_cursor {
+                self.db(|s| s.set_meta(&older_key(*id), next))?;
+            }
+        }
+        if !unfetched.is_empty() {
+            // Storing that history counted it as new messages; restore the phone's summaries.
+            self.db(|s| s.upsert_threads(&threads.threads))?;
+        }
         if let Ok(contacts) = self.client.contacts().await {
             self.db(|s| s.replace_contacts(&contacts.contacts))?;
         }

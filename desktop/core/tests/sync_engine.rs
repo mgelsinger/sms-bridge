@@ -221,6 +221,59 @@ async fn a_send_made_while_still_connecting_is_queued_at_once() {
     drop(silent);
 }
 
+/// Regression: found on a real phone with Android 17. Its app started listing
+/// conversations it had left out before, and they showed on the PC with no history,
+/// because the sync cursor was already past their messages.
+#[tokio::test(flavor = "multi_thread")]
+async fn threads_listed_without_history_are_fetched_on_catch_up() {
+    let mock = start_mock(&[]);
+    let token = PhoneClient::new(mock.address.clone(), None)
+        .expect("client")
+        .pair(CODE, "SYNC-TEST")
+        .await
+        .expect("pair")
+        .token;
+    let client = PhoneClient::new(mock.address.clone(), Some(token)).expect("client");
+
+    // Up to date by its cursor, yet holding nothing: every thread is newly listed.
+    let now = client.sync(None, 1).await.expect("cursor").next_cursor;
+    let store = Arc::new(Mutex::new(Store::open_in_memory().expect("store")));
+    store
+        .lock()
+        .expect("lock")
+        .set_meta(sync::META_SYNC_CURSOR, &now)
+        .expect("meta");
+    let events = Arc::new(Recorder::default());
+    let commands = sync::spawn(client.clone(), store.clone(), events.clone());
+    eventually("connected", || {
+        matches!(events.last(), Some(ConnState::Connected { .. }))
+    })
+    .await;
+
+    let phone = client.threads(50, None).await.expect("threads").threads;
+    {
+        let s = store.lock().expect("lock");
+        assert_eq!(s.message_count().expect("count"), 8, "history was fetched");
+        assert!(s.threads_without_messages().expect("query").is_empty());
+        let local = s.threads().expect("threads");
+        assert_eq!(
+            local.iter().map(|t| t.id).collect::<Vec<_>>(),
+            phone.iter().map(|t| t.id).collect::<Vec<_>>()
+        );
+        // Fetched history is not counted a second time as new or unread messages.
+        assert_eq!(
+            local.iter().map(|t| t.unread).collect::<Vec<_>>(),
+            phone.iter().map(|t| t.unread_count).collect::<Vec<_>>()
+        );
+    }
+    assert!(
+        events.inbound.lock().expect("lock").is_empty(),
+        "old messages raise no notifications"
+    );
+    commands.send(Command::Stop).expect("stop");
+    eventually("stopped", || events.last() == Some(ConnState::Stopped)).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_revoked_token_stops_retrying_and_reports_unauthorized() {
     let mock = start_mock(&[]);
