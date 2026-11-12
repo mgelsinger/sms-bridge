@@ -35,9 +35,19 @@ Last updated: 2026-11-11.
   the app. He does not want Windows pop-ups, so they are now opt-in and a
   taskbar dot announces unread texts instead (see DECISIONS.md). A text to his
   own number does not come back as inbound on his carrier.
+- Late on 2026-11-11 the PC stopped completing its catch-up: the rebuilt
+  thread list took over 30 seconds on the dozing phone and the request timed
+  out in a loop. Fixed the same night (fixed query count, see DECISIONS.md);
+  catch-up now takes about a second. Lesson for testing: an established TCP
+  connection is not proof the app is connected; check for the "Connected"
+  state or the phone's `/threads` and `/contacts` log lines.
+- Left running overnight from 22:48 on 2026-11-11: dev-5e591cf on both the
+  phone and the PC, paired, PC app started normally. First thing next session:
+  ask Mickey whether texts that arrived overnight were in the app (that is
+  section 6), and whether the red dot showed on the taskbar icon for them.
 - Still open on the real phone: section 5 (Wi-Fi drop mid-send) and section 6
   (idle for an hour). `docs/PHASE-2.md` can be written once the taskbar dot is
-  confirmed on a dev build; `docs/PHASE-3.md` waits for section 5.
+  confirmed by Mickey; `docs/PHASE-3.md` waits for section 5.
 - After the checklist passes: write `docs/PHASE-2.md` and `docs/PHASE-3.md`
   (CI tags the commits that add them), then start phase 4 from
   [PLAN.md](PLAN.md).
@@ -67,7 +77,18 @@ Last updated: 2026-11-11.
   them after the desk session.
 - RCS is off on Mickey's phone by decision (see DECISIONS.md).
 - Android 17 withholds 86 MMS rows flagged `restricted` from the app (two
-  conversations). Find out what the flag means.
+  conversations). Find out what the flag means. Google's Android 17 behaviour
+  change pages (read 2026-11-11) do not mention it, the `read_restriction`
+  thread column, or MMS at all.
+- Android 17 "SMS OTP protection": verification-code texts in WebOTP or SMS
+  Retriever format are withheld from apps other than the intended recipient
+  for three hours, broadcast and provider queries both, for all apps. Such
+  codes will reach the PC three hours late. For apps targeting API 37 this
+  extends to ordinary OTP texts, so do not raise `targetSdk` from 35 to 37
+  without a plan. Google lists "connected device companion apps" as exempt;
+  find out what qualifies, since this app is one in spirit. Source:
+  https://developer.android.com/about/versions/17/behavior-changes-all and
+  https://developer.android.com/about/versions/17/behavior-changes-17
 - History fetches are slow on the real phone: each MMS costs two provider
   lookups at 70 to 400 ms each while the phone dozes, so a 100-message page of
   an MMS-heavy thread can take 10 seconds or more, and one with 70 MMS could
