@@ -14,6 +14,9 @@ pub type Result<T> = rusqlite::Result<T>;
 
 const SCHEMA_VERSION: i64 = 1;
 
+/// Preference: raise a pop-up notification for inbound texts. Off unless set.
+pub const PREF_POPUPS: &str = "pref:popups";
+
 pub struct Store {
     conn: Connection,
 }
@@ -158,8 +161,21 @@ impl Store {
     }
 
     /// Forgets everything about the current phone, for pairing a different one.
+    /// The user's own preferences (`pref:` keys) belong to this PC and are kept.
     pub fn clear_phone_data(&self) -> Result<()> {
-        self.conn.execute_batch("DELETE FROM threads; DELETE FROM messages; DELETE FROM contacts; DELETE FROM outbox; DELETE FROM meta;")
+        self.conn.execute_batch(
+            "DELETE FROM threads; DELETE FROM messages; DELETE FROM contacts; DELETE FROM outbox;
+             DELETE FROM meta WHERE key NOT LIKE 'pref:%';",
+        )
+    }
+
+    /// A yes/no preference of this PC's user. Unset means no.
+    pub fn pref(&self, key: &str) -> Result<bool> {
+        Ok(self.meta(key)?.as_deref() == Some("1"))
+    }
+
+    pub fn set_pref(&self, key: &str, on: bool) -> Result<()> {
+        self.set_meta(key, if on { "1" } else { "0" })
     }
 
     // Writes ----------------------------------------------------------------
@@ -406,6 +422,11 @@ impl Store {
             })
         })?;
         rows.collect()
+    }
+
+    /// Unread texts across all threads, counted the way the thread list shows them.
+    pub fn unread_total(&self) -> Result<u32> {
+        Ok(self.threads()?.iter().map(|t| t.unread).sum())
     }
 
     /// Threads the phone lists as having messages while none of them are stored here,
@@ -655,6 +676,25 @@ mod tests {
             ),
             (Some("new"), Direction::Out, Some("c9"))
         );
+    }
+
+    #[test]
+    fn preferences_default_to_off_and_survive_unpairing() {
+        let s = store();
+        assert!(
+            !s.pref(PREF_POPUPS).expect("pref"),
+            "pop-ups are off until asked for"
+        );
+        s.set_pref(PREF_POPUPS, true).expect("set");
+        s.set_meta("phone_host", "192.168.1.20").expect("meta");
+        s.clear_phone_data().expect("clear");
+        assert!(
+            s.pref(PREF_POPUPS).expect("pref"),
+            "a preference outlives the pairing"
+        );
+        assert_eq!(s.meta("phone_host").expect("meta"), None);
+        s.set_pref(PREF_POPUPS, false).expect("set");
+        assert!(!s.pref(PREF_POPUPS).expect("pref"));
     }
 
     #[test]

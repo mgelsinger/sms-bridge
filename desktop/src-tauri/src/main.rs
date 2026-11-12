@@ -8,7 +8,7 @@ use serde::Serialize;
 use sms_bridge_core::discovery::{self, DiscoveredPhone};
 use sms_bridge_core::net::{probe_fingerprint, NetError, PhoneAddress, PhoneClient};
 use sms_bridge_core::protocol::PROTOCOL_VERSION;
-use sms_bridge_core::store::{MessageView, ThreadView};
+use sms_bridge_core::store::{MessageView, ThreadView, PREF_POPUPS};
 use sms_bridge_core::sync::{self, Command, ConnState};
 use std::sync::Arc;
 use std::time::Duration;
@@ -103,7 +103,20 @@ fn unpair(state: Shared<'_>) -> Result<(), String> {
 
 #[tauri::command]
 fn threads(state: Shared<'_>) -> Result<Vec<ThreadView>, String> {
+    // The window asks for this whenever it (re)loads, which is when the taskbar dot may be stale.
+    state.refresh_attention();
     state.db(|s| s.threads()).map_err(err)
+}
+
+/// Whether inbound texts raise a pop-up notification. Off unless the user turned it on.
+#[tauri::command]
+fn popups_enabled(state: Shared<'_>) -> Result<bool, String> {
+    state.db(|s| s.pref(PREF_POPUPS)).map_err(err)
+}
+
+#[tauri::command]
+fn set_popups(state: Shared<'_>, enabled: bool) -> Result<(), String> {
+    state.db(|s| s.set_pref(PREF_POPUPS, enabled)).map_err(err)
 }
 
 #[tauri::command]
@@ -210,6 +223,9 @@ fn show_main(app: &tauri::AppHandle) {
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        state.reapply_attention();
+    }
 }
 
 fn main() {
@@ -258,6 +274,8 @@ fn main() {
             pair,
             unpair,
             threads,
+            popups_enabled,
+            set_popups,
             messages,
             load_older,
             search,

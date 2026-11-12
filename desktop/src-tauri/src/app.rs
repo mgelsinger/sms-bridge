@@ -1,10 +1,11 @@
 //! App-wide state: the store, the paired phone, and the running sync engine.
 
 use serde::Serialize;
+use sms_bridge_core::attention;
 use sms_bridge_core::discovery;
 use sms_bridge_core::net::{probe_fingerprint, PhoneAddress, PhoneClient};
 use sms_bridge_core::protocol::{DeviceStatus, Message};
-use sms_bridge_core::store::Store;
+use sms_bridge_core::store::{Store, PREF_POPUPS};
 use sms_bridge_core::sync::{self, Command, ConnState, Events};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -16,6 +17,9 @@ use tokio::sync::mpsc::UnboundedSender;
 const KEYRING_SERVICE: &str = "io.github.mgelsinger.smsbridge";
 const KEYRING_USER: &str = "phone-token";
 const REDISCOVER_EVERY: Duration = Duration::from_secs(30);
+/// Windows scales the taskbar overlay down to 16 pixels; 32 keeps it sharp on high-DPI screens.
+#[cfg(target_os = "windows")]
+const DOT_SIZE: u32 = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Paired {
@@ -33,6 +37,8 @@ pub struct Inner {
     client: Option<PhoneClient>,
     open_thread: Option<u64>,
     last_rediscovery: Option<Instant>,
+    /// The unread count the taskbar dot and tray tooltip currently reflect.
+    shown_unread: Option<u32>,
 }
 
 pub struct AppState {
@@ -102,6 +108,41 @@ impl AppState {
 
     pub fn emit_threads_changed(&self) {
         let _ = self.handle.emit("threads-changed", ());
+        self.refresh_attention();
+    }
+
+    /// Puts a dot on the taskbar icon while anything is unread, and the count in
+    /// the tray tooltip for when the window is hidden. This is how new texts are
+    /// announced by default; pop-ups are opt-in.
+    pub fn refresh_attention(&self) {
+        let unread = self.db(|s| s.unread_total()).unwrap_or(0);
+        {
+            let mut inner = self.lock();
+            if inner.shown_unread == Some(unread) {
+                return;
+            }
+            inner.shown_unread = Some(unread);
+        }
+        if let Some(window) = self.handle.get_webview_window("main") {
+            #[cfg(target_os = "windows")]
+            {
+                let dot = attention::unread_dot_rgba(DOT_SIZE);
+                let icon = (unread > 0).then(|| tauri::image::Image::new(&dot, DOT_SIZE, DOT_SIZE));
+                let _ = window.set_overlay_icon(icon);
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = window.set_badge_count((unread > 0).then_some(i64::from(unread)));
+        }
+        if let Some(tray) = self.handle.tray_by_id("main") {
+            let _ = tray.set_tooltip(Some(attention::tray_tooltip(unread)));
+        }
+    }
+
+    /// Applies the dot again from scratch. A window that was hidden gets a new
+    /// taskbar button when it is shown, without the overlay.
+    pub fn reapply_attention(&self) {
+        self.lock().shown_unread = None;
+        self.refresh_attention();
     }
 
     /// Starts syncing with the stored phone, if there is one.
@@ -293,12 +334,14 @@ impl Events for Bridge {
         let Some(app) = self.state.upgrade() else {
             return;
         };
+        let enabled = app.db(|s| s.pref(PREF_POPUPS)).unwrap_or(false);
         let focused = app
             .handle
             .get_webview_window("main")
             .and_then(|w| w.is_focused().ok())
             .unwrap_or(false);
-        if focused && app.lock().open_thread == Some(message.thread_id) {
+        let open_thread = app.lock().open_thread;
+        if !attention::wants_popup(enabled, focused, open_thread, message.thread_id) {
             return;
         }
         let title = app

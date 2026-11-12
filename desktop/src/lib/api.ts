@@ -99,6 +99,8 @@ export const api = {
   markRead: (threadId: number) => invoke<void>("mark_read", { threadId }),
   setOpenThread: (threadId: number | null) => invoke<void>("set_open_thread", { threadId }),
   reconnect: () => invoke<void>("reconnect"),
+  popupsEnabled: () => invoke<boolean>("popups_enabled"),
+  setPopups: (enabled: boolean) => invoke<void>("set_popups", { enabled }),
   mmsPart: (partId: number) => invoke<ArrayBuffer>("mms_part", { partId }),
   computerName: () => invoke<string>("computer_name"),
 };

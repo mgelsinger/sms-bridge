@@ -336,6 +336,11 @@ function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
 
 function StatusBar({ paired, conn, device, onUnpaired }: { paired: Paired; conn: ConnState | null; device: DeviceStatus | null; onUnpaired: () => void }) {
   const [menu, setMenu] = useState(false);
+  // New texts always put a dot on the taskbar icon. Pop-ups are extra and off by default.
+  const [popups, setPopups] = useState(false);
+  useEffect(() => {
+    api.popupsEnabled().then(setPopups).catch(() => {});
+  }, []);
   const label = (() => {
     switch (conn?.state) {
       case "connected":
@@ -367,6 +372,17 @@ function StatusBar({ paired, conn, device, onUnpaired }: { paired: Paired; conn:
       {menu && (
         <div className={styles.menu} role="menu">
           <button role="menuitem" onClick={() => { setMenu(false); void api.reconnect(); }}>Reconnect now</button>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={popups}
+            onClick={() => {
+              setMenu(false);
+              const next = !popups;
+              void api.setPopups(next).then(() => setPopups(next));
+            }}
+          >
+            Pop-up notifications: {popups ? "on" : "off"}
+          </button>
           <button
             role="menuitem"
             onClick={() => {
