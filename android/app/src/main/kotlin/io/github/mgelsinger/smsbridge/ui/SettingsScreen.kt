@@ -39,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mgelsinger.smsbridge.core.PairingManager
 import io.github.mgelsinger.smsbridge.platform.AppGraph
@@ -75,6 +77,9 @@ fun SettingsScreen(graph: AppGraph) {
     val batteryExempt = remember(refresh) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     }
+    // The battery exemption and "Allow restricted settings" are granted on system screens,
+    // so check again each time the user comes back here.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { refresh++ }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -92,7 +97,6 @@ fun SettingsScreen(graph: AppGraph) {
                         context.startActivity(
                             Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
                         )
-                        refresh++
                     },
                     onAppInfo = {
                         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
