@@ -3,7 +3,7 @@
 mod common;
 
 use common::{start_mock, CODE};
-use sms_bridge_core::net::PhoneClient;
+use sms_bridge_core::net::{PhoneAddress, PhoneClient};
 use sms_bridge_core::protocol::*;
 use sms_bridge_core::store::Store;
 use sms_bridge_core::sync::{self, Command, ConnState, Events};
@@ -159,6 +159,66 @@ async fn sync_receive_send_and_replay_after_reconnect() {
 
     commands.send(Command::Stop).expect("stop");
     eventually("stopped", || events.last() == Some(ConnState::Stopped)).await;
+}
+
+/// Regression: found with the installed app against an emulator whose Wi-Fi was
+/// switched off. A send made during a connection attempt was not recorded until
+/// the attempt gave up, so no "Sending" bubble showed for up to 10 seconds and
+/// the text was lost if the app closed meanwhile.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_send_made_while_still_connecting_is_queued_at_once() {
+    // Accepts TCP connections (from the backlog) and never answers, like a phone
+    // that dropped off Wi-Fi without closing anything.
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let address = PhoneAddress {
+        host: "127.0.0.1".into(),
+        port: silent.local_addr().expect("address").port(),
+        fingerprint: "a".repeat(64),
+    };
+    let client = PhoneClient::new(address, Some("C".repeat(43))).expect("client");
+    let store = Arc::new(Mutex::new(Store::open_in_memory().expect("store")));
+    let events = Arc::new(Recorder::default());
+    let commands = sync::spawn(client, store.clone(), events.clone());
+    eventually("connecting", || {
+        events.last() == Some(ConnState::Connecting)
+    })
+    .await;
+
+    commands
+        .send(Command::Send {
+            thread_id: Some(12),
+            to: None,
+            body: "Written while connecting".into(),
+        })
+        .expect("command");
+    // Two seconds is far inside the 10 second connection timeout.
+    let asked = std::time::Instant::now();
+    loop {
+        let queued = store
+            .lock()
+            .expect("lock")
+            .outbox_unconfirmed()
+            .expect("outbox")
+            .len();
+        if queued == 1 {
+            break;
+        }
+        assert!(
+            asked.elapsed() < Duration::from_secs(2),
+            "the send was not queued while the engine was still connecting"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        events.last(),
+        Some(ConnState::Connecting),
+        "the attempt is still in progress"
+    );
+
+    // Stop is honoured mid-attempt as well.
+    commands.send(Command::Stop).expect("stop");
+    eventually("stopped", || events.last() == Some(ConnState::Stopped)).await;
+    drop(silent);
 }
 
 #[tokio::test(flavor = "multi_thread")]

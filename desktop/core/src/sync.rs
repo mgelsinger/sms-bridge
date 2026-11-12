@@ -100,10 +100,16 @@ impl From<rusqlite::Error> for End {
     }
 }
 
-pub struct Engine {
+/// Everything the engine needs except the command queue. Kept apart so that a
+/// connection attempt, which borrows this, can run while commands are still read.
+struct Core {
     client: PhoneClient,
     store: Arc<Mutex<Store>>,
     events: Arc<dyn Events>,
+}
+
+pub struct Engine {
+    core: Core,
     commands: mpsc::UnboundedReceiver<Command>,
 }
 
@@ -118,9 +124,11 @@ pub fn engine(
 ) {
     let (tx, rx) = mpsc::unbounded_channel();
     let engine = Engine {
-        client,
-        store,
-        events,
+        core: Core {
+            client,
+            store,
+            events,
+        },
         commands: rx,
     };
     (tx, engine.run())
@@ -141,15 +149,10 @@ type Sink = SplitSink<PhoneSocket, WsMessage>;
 type Stream = SplitStream<PhoneSocket>;
 
 impl Engine {
-    fn db<T>(&self, f: impl FnOnce(&mut Store) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
-        let mut guard = self.store.lock().unwrap_or_else(|p| p.into_inner());
-        f(&mut guard)
-    }
-
     pub async fn run(mut self) {
         let mut backoff = Duration::from_secs(1);
         loop {
-            self.events.state(&ConnState::Connecting);
+            self.core.events.state(&ConnState::Connecting);
             let started = Instant::now();
             let end = self.session().await;
             if started.elapsed() > Duration::from_secs(60) {
@@ -157,26 +160,26 @@ impl Engine {
             }
             match end {
                 End::Stop => {
-                    self.events.state(&ConnState::Stopped);
+                    self.core.events.state(&ConnState::Stopped);
                     return;
                 }
                 End::Reconnect => continue,
                 End::Fatal(state) => {
-                    self.events.state(&state);
+                    self.core.events.state(&state);
                     // Wait for the user: retrying a wrong certificate or a revoked token cannot help.
                     if !self.wait(None).await {
-                        self.events.state(&ConnState::Stopped);
+                        self.core.events.state(&ConnState::Stopped);
                         return;
                     }
                 }
                 End::Retry(reason) => {
                     log::info!("disconnected: {reason}");
-                    self.events.state(&ConnState::Offline {
+                    self.core.events.state(&ConnState::Offline {
                         reason,
                         retry_in_s: backoff.as_secs(),
                     });
                     if !self.wait(Some(backoff)).await {
-                        self.events.state(&ConnState::Stopped);
+                        self.core.events.state(&ConnState::Stopped);
                         return;
                     }
                     backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -201,12 +204,99 @@ impl Engine {
                 Some(Command::Reconnect) => return true,
                 Some(other) => {
                     // Queued now, sent on reconnect.
-                    if let Err(e) = self.queue(other) {
+                    if let Err(e) = self.core.queue(other) {
                         log::warn!("could not queue a send: {e}");
                     }
                 }
             }
         }
+    }
+
+    async fn session(&mut self) -> End {
+        // Connecting can take as long as the timeouts allow when the phone has gone
+        // quiet. Sends made meanwhile go to the outbox right away, so they show as
+        // "Sending" at once and survive a restart; replay_outbox then sends them.
+        let (mut sink, mut stream, device_name) = {
+            let opening = self.core.open();
+            tokio::pin!(opening);
+            loop {
+                tokio::select! {
+                    opened = &mut opening => match opened {
+                        Ok(parts) => break parts,
+                        Err(end) => return end,
+                    },
+                    cmd = self.commands.recv() => match cmd {
+                        None | Some(Command::Stop) => return End::Stop,
+                        Some(Command::Reconnect) => return End::Reconnect,
+                        Some(other) => {
+                            if let Err(e) = self.core.queue(other) {
+                                log::warn!("could not queue a send: {e}");
+                            }
+                        }
+                    },
+                }
+            }
+        };
+        if let Err(e) = self.core.replay_outbox(&mut sink).await {
+            return e;
+        }
+        self.core
+            .events
+            .state(&ConnState::Connected { device_name });
+
+        let mut ping = interval(PING_EVERY);
+        ping.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        ping.tick().await;
+        let mut pong_deadline: Option<Instant> = None;
+
+        loop {
+            let deadline = pong_deadline;
+            let pong_wait = async move {
+                match deadline {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                frame = next_envelope(&mut stream) => match frame {
+                    Ok(Some(env)) => {
+                        if matches!(env.frame, Frame::Pong) {
+                            pong_deadline = None;
+                        } else if let Err(e) = self.core.apply(env.frame).await {
+                            return e;
+                        }
+                    }
+                    Ok(None) => return End::Retry("the phone closed the connection".into()),
+                    Err(e) => return e,
+                },
+                _ = ping.tick() => {
+                    if pong_deadline.is_none() {
+                        pong_deadline = Some(Instant::now() + PONG_WITHIN);
+                    }
+                    if let Err(e) = send(&mut sink, &Envelope::new(Frame::Ping)).await { return e; }
+                }
+                _ = pong_wait => return End::Retry("the phone stopped answering pings".into()),
+                cmd = self.commands.recv() => match cmd {
+                    None | Some(Command::Stop) => {
+                        let _ = sink.close().await;
+                        return End::Stop;
+                    }
+                    Some(Command::Reconnect) => return End::Reconnect,
+                    Some(other) => match self.core.queue(other) {
+                        Ok(Some(frame)) => if let Err(e) = send(&mut sink, &frame).await { return e; },
+                        Ok(None) => {}
+                        Err(e) => return e.into(),
+                    },
+                },
+            }
+        }
+    }
+}
+
+impl Core {
+    fn db<T>(&self, f: impl FnOnce(&mut Store) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+        let mut guard = self.store.lock().unwrap_or_else(|p| p.into_inner());
+        f(&mut guard)
     }
 
     /// Records a send in the outbox. Returns the frame to send now, if connected.
@@ -234,85 +324,30 @@ impl Engine {
         Ok(Some(send_frame(client_id, thread_id, to, body)))
     }
 
-    async fn session(&mut self) -> End {
-        let socket = match self.client.websocket().await {
-            Ok(s) => s,
-            Err(e) => return e.into(),
-        };
-        let (mut sink, mut stream) = socket.split();
+    /// Connects, reads `hello`, and catches up: everything before live frames.
+    async fn open(&self) -> Result<(Sink, Stream, String), End> {
+        let socket = self.client.websocket().await?;
+        let (sink, mut stream) = socket.split();
 
-        let hello = match timeout(Duration::from_secs(10), next_envelope(&mut stream)).await {
-            Ok(Ok(Some(Envelope {
-                frame:
-                    Frame::Hello {
-                        device_name,
-                        sync_cursor,
-                        ..
-                    },
-                ..
-            }))) => (device_name, sync_cursor),
-            Ok(Ok(_)) => return End::Retry("the phone did not say hello".into()),
-            Ok(Err(e)) => return e,
-            Err(_) => return End::Retry("no hello within 10 s".into()),
-        };
+        let (device_name, sync_cursor) =
+            match timeout(Duration::from_secs(10), next_envelope(&mut stream)).await {
+                Ok(Ok(Some(Envelope {
+                    frame:
+                        Frame::Hello {
+                            device_name,
+                            sync_cursor,
+                            ..
+                        },
+                    ..
+                }))) => (device_name, sync_cursor),
+                Ok(Ok(_)) => return Err(End::Retry("the phone did not say hello".into())),
+                Ok(Err(e)) => return Err(e),
+                Err(_) => return Err(End::Retry("no hello within 10 s".into())),
+            };
 
         self.events.state(&ConnState::Syncing);
-        if let Err(e) = self.catch_up(&hello.1).await {
-            return e;
-        }
-        if let Err(e) = self.replay_outbox(&mut sink).await {
-            return e;
-        }
-        self.events.state(&ConnState::Connected {
-            device_name: hello.0,
-        });
-
-        let mut ping = interval(PING_EVERY);
-        ping.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        ping.tick().await;
-        let mut pong_deadline: Option<Instant> = None;
-
-        loop {
-            let deadline = pong_deadline;
-            let pong_wait = async move {
-                match deadline {
-                    Some(at) => tokio::time::sleep_until(at).await,
-                    None => std::future::pending().await,
-                }
-            };
-            tokio::select! {
-                frame = next_envelope(&mut stream) => match frame {
-                    Ok(Some(env)) => {
-                        if matches!(env.frame, Frame::Pong) {
-                            pong_deadline = None;
-                        } else if let Err(e) = self.apply(env.frame).await {
-                            return e;
-                        }
-                    }
-                    Ok(None) => return End::Retry("the phone closed the connection".into()),
-                    Err(e) => return e,
-                },
-                _ = ping.tick() => {
-                    if pong_deadline.is_none() {
-                        pong_deadline = Some(Instant::now() + PONG_WITHIN);
-                    }
-                    if let Err(e) = send(&mut sink, &Envelope::new(Frame::Ping)).await { return e; }
-                }
-                _ = pong_wait => return End::Retry("the phone stopped answering pings".into()),
-                cmd = self.commands.recv() => match cmd {
-                    None | Some(Command::Stop) => {
-                        let _ = sink.close().await;
-                        return End::Stop;
-                    }
-                    Some(Command::Reconnect) => return End::Reconnect,
-                    Some(other) => match self.queue(other) {
-                        Ok(Some(frame)) => if let Err(e) = send(&mut sink, &frame).await { return e; },
-                        Ok(None) => {}
-                        Err(e) => return e.into(),
-                    },
-                },
-            }
-        }
+        self.catch_up(&sync_cursor).await?;
+        Ok((sink, stream, device_name))
     }
 
     /// Brings the store up to the phone's `hello` cursor.
