@@ -219,6 +219,46 @@ class EmulatorEndToEndTest {
     }
 
     /**
+     * Regression: on a dozing Pixel every provider query took a few hundred milliseconds, and
+     * the thread list made several per thread. Listing 43 threads took over 30 seconds, the PC
+     * timed out and never finished connecting. The cost must not grow with the thread count,
+     * and the watcher's idle poll must not build the thread list at all.
+     */
+    @Test
+    fun listingThreadsCostsTheSameHoweverManyThereAre() {
+        val sms = context.getSystemService(android.telephony.SmsManager::class.java)
+        val numbers = listOf("5550001", "5550002", "5550003", "5550004")
+        numbers.forEach { sms.sendTextMessage(it, null, "thread cost", null, null) }
+        val deadline = System.currentTimeMillis() + 60_000
+        var threads = 0
+        while (System.currentTimeMillis() < deadline) {
+            repo.forgetThreads()
+            threads = repo.threadPage(200, null).items.size
+            if (threads >= numbers.size) break
+            Thread.sleep(1_000)
+        }
+        assertTrue("the sent texts created threads: $threads", threads >= numbers.size)
+
+        // The watcher shares the repository; keep its queries out of the count.
+        watcher.stop()
+        Thread.sleep(1_000)
+        repo.forgetThreads()
+        val before = repo.queryCount.get()
+        repo.threadPage(200, null)
+        val cost = repo.queryCount.get() - before
+        Log.i("SmsBridgeTest", "listing $threads threads took $cost provider queries")
+        assertTrue("listing $threads threads took $cost provider queries", cost <= 8)
+
+        val cursor = repo.latestCursor()
+        repo.forgetThreads()
+        val idleBefore = repo.queryCount.get()
+        val idle = repo.messagesSince(cursor, 100)
+        val idleCost = repo.queryCount.get() - idleBefore
+        assertTrue("nothing is new", idle.messages.isEmpty())
+        assertTrue("an idle poll took $idleCost provider queries", idleCost <= 2)
+    }
+
+    /**
      * The Windows client checks TLS handshake signatures with rustls and webpki, which only
      * accept X.509 v3 certificates with ECDSA P-256 keys it knows. Guard what Keystore issues.
      */
