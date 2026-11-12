@@ -31,13 +31,13 @@ Last updated: 2026-11-11.
   copy sent, bubble matched, status Sent. No carrier delivery report was seen.
 - Section 3 latency passed on the real phone: a text from another number
   arrived at 22:23 with the phone dozing and was in the PC's store 1.0 second
-  after the phone stored it (plan target: 2 seconds). Whether the Windows
-  notification showed is not confirmed yet; only Mickey can see that. A text
-  to his own number does not come back as inbound on his carrier.
-- Still open on the real phone: the notification check for section 3,
-  section 5 (Wi-Fi drop mid-send), section 6 (idle for an hour).
-  `docs/PHASE-2.md` and `docs/PHASE-3.md` wait for the notification check and
-  section 5.
+  after the phone stored it (plan target: 2 seconds). Mickey saw it appear in
+  the app. He does not want Windows pop-ups, so they are now opt-in and a
+  taskbar dot announces unread texts instead (see DECISIONS.md). A text to his
+  own number does not come back as inbound on his carrier.
+- Still open on the real phone: section 5 (Wi-Fi drop mid-send) and section 6
+  (idle for an hour). `docs/PHASE-2.md` can be written once the taskbar dot is
+  confirmed on a dev build; `docs/PHASE-3.md` waits for section 5.
 - After the checklist passes: write `docs/PHASE-2.md` and `docs/PHASE-3.md`
   (CI tags the commits that add them), then start phase 4 from
   [PLAN.md](PLAN.md).
@@ -69,10 +69,11 @@ Last updated: 2026-11-11.
 - Android 17 withholds 86 MMS rows flagged `restricted` from the app (two
   conversations). Find out what the flag means.
 - History fetches are slow on the real phone: each MMS costs two provider
-  lookups at roughly 70 ms each while the phone dozes, so a 100-message page of
-  an MMS-heavy thread takes about 10 seconds and a first sync of a large
-  history takes minutes. Batch the address and part lookups per page.
-- The reconnect wait doubles up to 60 seconds. Consider capping it at 15.
+  lookups at 70 to 400 ms each while the phone dozes, so a 100-message page of
+  an MMS-heavy thread can take 10 seconds or more, and one with 70 MMS could
+  pass the PC's 30 second timeout. Batch the part lookups per page and
+  consider a longer timeout for history pages. (The thread list itself was
+  fixed on 2026-11-11; see DECISIONS.md.)
 - CI's emulator is API 34. The Android 17 thread-index behaviour is covered
   only by JVM tests of the merge logic; an API 37 emulator job would cover it
   for real.

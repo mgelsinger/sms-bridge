@@ -16,10 +16,26 @@ tallies threads from the message rows and rebuilds any thread the index does
 not list: participants from the SMS addresses, or for MMS-only threads from the
 senders of inbound and recipients of outbound messages (the newest 20), which
 never needs this phone's own number. Indexed threads are passed through
-unchanged, so older Android versions behave as before. The result is cached
-for 5 seconds while no message is added, because message pages and sync ask
-for it on every call. Known gap: in an MMS-only group this phone never wrote
-to, members who never wrote are not found.
+unchanged, so older Android versions behave as before. Known gap: in an
+MMS-only group this phone never wrote to, members who never wrote are not
+found.
+
+**The thread list costs a fixed number of provider queries.** The first
+version of the rebuild asked the provider several times per thread, on top of
+two unread-count queries per thread that were already there. On the dozing
+Pixel each provider query took 70 to 400 ms, so listing 43 threads took 18 to
+57 seconds, the PC's 30 second request timeout fired, and the PC looped on
+"Syncing" without ever reaching the live connection. The list is now built
+from two scans of the message tables, two batched snippet lookups, and two
+unread scans, about 8 queries whatever the thread count (measured: 0.4 to 2
+seconds on the dozing phone). It is kept until a new message row is seen or a
+minute has passed, and the watcher's 30 second idle poll no longer touches it.
+An emulator test holds the query count down. Still per-message: the two
+lookups each MMS needs when a page of history is fetched.
+
+**The reconnect wait is capped at 15 seconds, not 60.** Mickey watched the
+"retrying in 32 s" counter while the phone was already back. A retry is one
+connection attempt on the LAN, so a short cap costs nothing.
 
 **The PC fetches history for threads that are listed without any.** When the
 phone starts listing a thread the PC has no messages for, the sync cursor is
@@ -30,6 +46,16 @@ threads, as the first sync does.
 conversations carry `restricted = 1` and are not returned to an app that is
 not the default SMS app. What marks them is not known yet. They do not show on
 the PC. Not fixable from the app side as far as is known; to be researched.
+
+**New texts put a dot on the taskbar icon; pop-ups are opt-in.** The plan had
+a Windows toast for every inbound text. Mickey does not want pop-ups in the
+notification area and asked for an indicator on the taskbar icon instead. The
+app now shows a red overlay dot on its taskbar button while anything is
+unread, and the unread count in the tray tooltip for when the window is
+hidden. Pop-up notifications remain as a switch in the status menu, off by
+default, for anyone who wants them. The preference is stored under a `pref:`
+key that unpairing does not clear. The phase 2 gate is therefore "the text is
+in the app within 2 seconds", not "a toast appears".
 
 **Wireless debugging is how the agent reaches the phone.** Mickey has no USB
 data cable. `adb pair` over Wi-Fi (he types the code) gives install and log

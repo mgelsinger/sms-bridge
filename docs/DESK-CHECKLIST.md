@@ -54,10 +54,13 @@ first sync took.
 1. Put the phone across the room, screen off.
 2. From another phone, text yours.
 
-Expected: a Windows notification with the sender's name within about 2
-seconds, and the conversation updates.
+Expected: the conversation updates within about 2 seconds, with the sender's
+name, and a red dot appears on the SMS Bridge taskbar icon until you read it.
+Pop-up notifications are off by default; the three-dot menu by the status
+line turns them on. A text you send to your own number may not come back as an
+incoming one (it depends on the carrier), so use another phone.
 
-Report: roughly how many seconds it took.
+Report: roughly how many seconds it took, and whether the dot showed.
 
 ## 4. Sending (phase 3 gate)
 
