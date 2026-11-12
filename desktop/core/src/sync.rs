@@ -18,7 +18,14 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 const PING_EVERY: Duration = Duration::from_secs(30);
 const PONG_WITHIN: Duration = Duration::from_secs(10);
-const MAX_BACKOFF: Duration = Duration::from_secs(60);
+/// A retry is one connection attempt on the user's own network, so there is no
+/// reason to make them wait long once the phone is back.
+const MAX_BACKOFF: Duration = Duration::from_secs(15);
+
+/// The wait before the next reconnection attempt: doubling, capped.
+fn next_backoff(current: Duration) -> Duration {
+    (current * 2).min(MAX_BACKOFF)
+}
 const SYNC_PAGE: u32 = 200;
 const INITIAL_MESSAGES_PER_THREAD: u32 = 100;
 pub const META_SYNC_CURSOR: &str = "sync_cursor";
@@ -182,7 +189,7 @@ impl Engine {
                         self.core.events.state(&ConnState::Stopped);
                         return;
                     }
-                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                    backoff = next_backoff(backoff);
                 }
             }
         }
@@ -609,4 +616,22 @@ async fn next_envelope(stream: &mut Stream) -> Result<Option<Envelope>, End> {
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// With the earlier 60 second cap, the app sat on "retrying in 32 s" long after
+    /// the phone was back.
+    #[test]
+    fn the_wait_between_retries_doubles_but_stays_short() {
+        let mut wait = Duration::from_secs(1);
+        let mut seen = Vec::new();
+        for _ in 0..8 {
+            seen.push(wait.as_secs());
+            wait = next_backoff(wait);
+        }
+        assert_eq!(seen, vec![1, 2, 4, 8, 15, 15, 15, 15]);
+    }
 }
