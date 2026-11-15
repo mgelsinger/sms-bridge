@@ -101,6 +101,8 @@ export const api = {
   reconnect: () => invoke<void>("reconnect"),
   popupsEnabled: () => invoke<boolean>("popups_enabled"),
   setPopups: (enabled: boolean) => invoke<void>("set_popups", { enabled }),
+  autostartEnabled: () => invoke<boolean>("autostart_enabled"),
+  setAutostart: (enabled: boolean) => invoke<void>("set_autostart", { enabled }),
   mmsPart: (partId: number) => invoke<ArrayBuffer>("mms_part", { partId }),
   computerName: () => invoke<string>("computer_name"),
 };

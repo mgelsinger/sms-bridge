@@ -18,6 +18,7 @@ tokio = { version = "1", features = ["sync", "time"] }
 log = "0.4"
 serde.workspace = true
 serde_json.workspace = true
+tauri-plugin-single-instance = "2"
 
 [lints]
 workspace = true

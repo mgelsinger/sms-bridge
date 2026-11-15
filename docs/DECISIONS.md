@@ -27,6 +27,41 @@ in the middle of a page is noticed after 90 seconds, not 30, and only for that
 request; connecting still gives up after 10. Smaller pages were the
 alternative, and would have made every sync slower to save a rare wait.
 
+**Starting with Windows is a switch in the status menu, off by default.**
+"Start with Windows" sits under "Pop-up notifications" and is stored as
+`pref:autostart`, which unpairing does not clear. Switching it on writes one
+value, `SMS Bridge`, under the current user's Run key:
+`"<path to the exe>" --autostart`. A start with that argument stays in the
+tray and opens no window. The menu shows what Windows will really do: it reads
+"off" if the entry is missing, points at another copy, or was switched off
+under Startup apps in Settings or Task Manager. At startup the entry is
+repaired towards the stored choice (removed if the choice is off, rewritten if
+the app moved), but an entry the user switched off in Windows itself is left
+alone until they switch it on in the app again. Development builds never
+register themselves. Known gap: uninstalling leaves the Run value behind;
+Windows ignores an entry whose program is gone.
+
+**The Run key is written directly, not through `tauri-plugin-autostart`.**
+The plan named the plugin. It writes the program path without quotes, and
+this app installs under `...\SMS Bridge\`, a folder with a space in its name;
+it also tries the all-users key first. Writing the one value ourselves needs
+only Microsoft's `windows-registry` crate, which the plugin uses underneath
+anyway, and lets the Windows CI job test the real round trip under a
+throwaway name.
+
+**Only one copy of the app runs.** With the app starting in the tray,
+opening it from the Start menu is the normal way to see the window, and that
+used to start a second copy syncing beside the first. A second start now
+shows the first copy's window and exits. The window is created hidden and
+shown by the app once it has decided whether this is a start at login.
+
+**New dependencies**
+
+| Dependency | Where | Why |
+| --- | --- | --- |
+| `windows-registry` (Windows only) | desktop core | Reads and writes the Run key value; the standard library has no registry access |
+| `tauri-plugin-single-instance` | desktop app | Detects a running copy and hands it the second start; doing that by hand means a named mutex plus a message channel between processes |
+
 ## Phase 3 gate, 2026-11-14
 
 **The disconnect-mid-send check is accepted on emulator evidence.** The plan's

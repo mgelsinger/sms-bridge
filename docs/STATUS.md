@@ -19,8 +19,10 @@ Last updated: 2026-11-14.
 - Next is phase 4 (harden) from [PLAN.md](PLAN.md). Its gate is a week of
   daily use, which started in effect on 2026-11-11. Already in place from
   earlier phases: start after boot, reconnect with a capped wait, tray, MMS
-  images, read-only group threads, search. Not started: autostart on Windows,
-  FTS5 search, signed APK and installer, and the open items below.
+  images, read-only group threads, search. Built in phase 4 so far: faster
+  history pages and "Start with Windows" (off by default, in the status
+  menu). Not started: FTS5 search, signed APK and installer, and the open
+  items below.
 - The agent reaches the phone over adb Wireless debugging, which Mickey turns
   on and pairs himself. Reading the app's status and installing builds is
   fine; permission prompts, pairing approval, and sending texts are his.
@@ -48,6 +50,14 @@ Last updated: 2026-11-14.
   fills in the plan, newest first.
 
 ## Open items
+
+- "Start with Windows", the tray-only start at login, and the one-copy rule
+  are proven only as far as CI goes (the registry round trip, the rules, the
+  menu). Nobody has yet seen them on a real PC. To check at the desk: switch
+  it on in the status menu, sign out and in, and confirm the app is in the
+  tray without a window; then open it from the Start menu and confirm the
+  existing copy comes to the front and Task Manager shows one
+  `sms-bridge-desktop.exe`.
 
 - Dependabot PRs #6 (npm) and #7 (Gradle) are open and unreviewed. Handle
   them after the desk session.

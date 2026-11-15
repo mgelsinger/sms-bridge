@@ -2,13 +2,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod autostart;
 
 use app::{AppState, Paired};
 use serde::Serialize;
 use sms_bridge_core::discovery::{self, DiscoveredPhone};
 use sms_bridge_core::net::{probe_fingerprint, NetError, PhoneAddress, PhoneClient};
 use sms_bridge_core::protocol::PROTOCOL_VERSION;
-use sms_bridge_core::store::{MessageView, ThreadView, PREF_POPUPS};
+use sms_bridge_core::startup;
+use sms_bridge_core::store::{MessageView, ThreadView, PREF_AUTOSTART, PREF_POPUPS};
 use sms_bridge_core::sync::{self, Command, ConnState};
 use std::sync::Arc;
 use std::time::Duration;
@@ -117,6 +119,21 @@ fn popups_enabled(state: Shared<'_>) -> Result<bool, String> {
 #[tauri::command]
 fn set_popups(state: Shared<'_>, enabled: bool) -> Result<(), String> {
     state.db(|s| s.set_pref(PREF_POPUPS, enabled)).map_err(err)
+}
+
+/// Whether the app starts with Windows, in the tray. Off unless the user turned
+/// it on here, and off again if they switched it off under Startup apps.
+#[tauri::command]
+fn autostart_enabled(state: Shared<'_>) -> Result<bool, String> {
+    Ok(state.db(|s| s.pref(PREF_AUTOSTART)).map_err(err)? && autostart::is_on())
+}
+
+#[tauri::command]
+fn set_autostart(state: Shared<'_>, enabled: bool) -> Result<(), String> {
+    autostart::set(enabled)?;
+    state
+        .db(|s| s.set_pref(PREF_AUTOSTART, enabled))
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -230,6 +247,13 @@ fn show_main(app: &tauri::AppHandle) {
 
 fn main() {
     let result = tauri::Builder::default()
+        // One copy at a time: the app keeps running in the tray, so opening it
+        // again must show that copy, not start a second one syncing beside it.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !startup::started_at_login(&args) {
+                show_main(app);
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
@@ -238,6 +262,7 @@ fn main() {
             let state = AppState::open(handle.clone(), &dir.join("sms-bridge.db"))?;
             app.manage(state.clone());
             state.start_if_paired();
+            autostart::repair(state.db(|s| s.pref(PREF_AUTOSTART)).unwrap_or(false));
 
             let show = MenuItem::with_id(app, "show", "Show SMS Bridge", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -265,6 +290,11 @@ fn main() {
                     }
                 });
             }
+            // The window is created hidden. A start at login stays in the tray;
+            // any other start shows it.
+            if !startup::started_at_login(std::env::args()) {
+                show_main(&handle);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -276,6 +306,8 @@ fn main() {
             threads,
             popups_enabled,
             set_popups,
+            autostart_enabled,
+            set_autostart,
             messages,
             load_older,
             search,

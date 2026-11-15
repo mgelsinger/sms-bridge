@@ -7,5 +7,6 @@ pub mod attention;
 pub mod discovery;
 pub mod net;
 pub mod protocol;
+pub mod startup;
 pub mod store;
 pub mod sync;

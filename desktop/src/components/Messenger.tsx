@@ -338,8 +338,11 @@ function StatusBar({ paired, conn, device, onUnpaired }: { paired: Paired; conn:
   const [menu, setMenu] = useState(false);
   // New texts always put a dot on the taskbar icon. Pop-ups are extra and off by default.
   const [popups, setPopups] = useState(false);
+  // Starting with Windows is the user's call too: off until switched on here.
+  const [autostart, setAutostart] = useState(false);
   useEffect(() => {
     api.popupsEnabled().then(setPopups).catch(() => {});
+    api.autostartEnabled().then(setAutostart).catch(() => {});
   }, []);
   const label = (() => {
     switch (conn?.state) {
@@ -382,6 +385,17 @@ function StatusBar({ paired, conn, device, onUnpaired }: { paired: Paired; conn:
             }}
           >
             Pop-up notifications: {popups ? "on" : "off"}
+          </button>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={autostart}
+            onClick={() => {
+              setMenu(false);
+              const next = !autostart;
+              api.setAutostart(next).then(() => setAutostart(next)).catch((e) => window.alert(errorText(e)));
+            }}
+          >
+            Start with Windows: {autostart ? "on" : "off"}
           </button>
           <button
             role="menuitem"

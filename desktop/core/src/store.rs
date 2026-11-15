@@ -17,6 +17,9 @@ const SCHEMA_VERSION: i64 = 1;
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
+/// Preference: start with Windows, in the tray. Off unless set.
+pub const PREF_AUTOSTART: &str = "pref:autostart";
+
 pub struct Store {
     conn: Connection,
 }
@@ -695,6 +698,19 @@ mod tests {
         assert_eq!(s.meta("phone_host").expect("meta"), None);
         s.set_pref(PREF_POPUPS, false).expect("set");
         assert!(!s.pref(PREF_POPUPS).expect("pref"));
+    }
+
+    #[test]
+    fn starting_with_windows_is_off_until_asked_for_and_survives_unpairing() {
+        let s = store();
+        assert!(!s.pref(PREF_AUTOSTART).expect("pref"));
+        s.set_pref(PREF_AUTOSTART, true).expect("set");
+        assert!(
+            !s.pref(PREF_POPUPS).expect("pref"),
+            "one preference does not switch another"
+        );
+        s.clear_phone_data().expect("clear");
+        assert!(s.pref(PREF_AUTOSTART).expect("pref"));
     }
 
     #[test]
