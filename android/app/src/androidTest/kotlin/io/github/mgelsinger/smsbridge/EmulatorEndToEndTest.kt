@@ -164,6 +164,12 @@ class EmulatorEndToEndTest {
         assertTrue("sync from the hello cursor includes ${message.id}", sync.messages.any { it.id == message.id })
         val threads = ProtocolJson.decodeFromString(ThreadsPage.serializer(), get("/threads", token).second)
         assertTrue("thread ${message.threadId} is listed", threads.threads.any { it.id == message.threadId })
+        // Android 17 keeps new threads out of the system's index for apps like this one; the
+        // phone then lists them from the messages. Say which of the two this run exercised.
+        val indexed = context.contentResolver
+            .query(Uri.parse("content://mms-sms/conversations?simple=true"), arrayOf("_id"), null, null, null)
+            ?.use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }.orEmpty()
+        Log.i("SmsBridgeTest", "API ${android.os.Build.VERSION.SDK_INT}: the system's index lists ${indexed.size} thread(s), the app lists ${threads.threads.size}; thread ${message.threadId} indexed: ${message.threadId in indexed}")
         val (code2, body) = get("/threads/${message.threadId}/messages?limit=20", token)
         assertEquals(200, code2)
         val page = ProtocolJson.decodeFromString(MessagesPage.serializer(), body)

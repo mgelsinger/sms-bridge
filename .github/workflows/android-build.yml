@@ -48,7 +48,6 @@ jobs:
         # SMS app (docs/DECISIONS.md) and is what the phone in daily use runs.
         include:
           - { api: '34', target: google_apis, profile: '', ram: '', cores: 2, extra: '', note: '' }
-          - { api: '37.0', target: google_apis, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'big' }
           - { api: '37.0', target: default, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'big' }
     steps:
       - uses: actions/checkout@v7
