@@ -44,6 +44,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -87,6 +89,9 @@ class EmulatorEndToEndTest {
     fun setUp() {
         port = server.start()
         watcher.start()
+        // Regression: a test that sent a text within the watcher's first 300 ms never saw
+        // the stored copy pushed, because the watcher had not yet noted where "new" begins.
+        runBlocking { withTimeout(30_000) { watcher.awaitWatching() } }
         val tm = PinnedTrustManager(identity.fingerprint)
         val ctx = SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
         http = OkHttpClient.Builder()

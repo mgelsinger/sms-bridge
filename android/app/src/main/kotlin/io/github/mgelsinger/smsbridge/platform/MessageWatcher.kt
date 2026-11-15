@@ -10,6 +10,7 @@ import io.github.mgelsinger.smsbridge.core.SendTracker
 import io.github.mgelsinger.smsbridge.core.SmsRepository
 import io.github.mgelsinger.smsbridge.core.SyncCursor
 import io.github.mgelsinger.smsbridge.protocol.MessageFrame
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -40,12 +41,21 @@ class MessageWatcher(
     private var loop: Job? = null
     private var poll: Job? = null
     private var lastError: String? = null
+    private val watching = CompletableDeferred<Unit>()
+
+    /**
+     * Returns once the watcher knows where "new" begins. A row stored before that is
+     * never pushed, so anything that must see its own row pushed waits for this first.
+     */
+    suspend fun awaitWatching() = watching.await()
 
     fun start() {
         resolver.registerContentObserver(Uri.parse("content://sms"), true, observer)
         resolver.registerContentObserver(Uri.parse("content://mms"), true, observer)
         loop = scope.launch {
-            trigger.trySend(Unit)
+            // Settle where "new" begins at once, not after the debounce: a text sent in
+            // that gap had its stored copy counted as old, and it was never pushed.
+            scan()
             for (t in trigger) {
                 delay(DEBOUNCE_MS)
                 scan()
@@ -68,7 +78,12 @@ class MessageWatcher(
 
     private fun scan() {
         try {
-            var c = cursor ?: repo.latestCursor().also { cursor = it; lastError = null; return }
+            var c = cursor ?: repo.latestCursor().also {
+                cursor = it
+                lastError = null
+                watching.complete(Unit)
+                return
+            }
             var pushed = 0
             while (true) {
                 val result = repo.messagesSince(c, BATCH)
