@@ -3,6 +3,25 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Phase 3 gate, 2026-11-14
+
+**The disconnect-mid-send check is accepted on emulator evidence.** The plan's
+phase 3 gate includes "a forced disconnect mid-send produces exactly one copy
+after reconnect". Mickey will not run that on his real phone (checklist
+section 5), and said so plainly. The behaviour was exercised three times
+with the installed Windows build against the release APK on the emulator: the
+bridge unreachable during a send, the phone's traffic silently dropped for 70
+seconds, and a send made while the PC was mid-reconnect. Each time one copy
+was sent. It is also covered by the sync engine test that replays the outbox
+after a reconnect and by the phone's replay test for a repeated `client_id`.
+That is taken as passing the gate. Section 5 stays in the checklist as
+optional. Do not ask him to run it again.
+
+**"Delivered" is not part of the gate on his carrier.** Every text sent from
+the PC on the real phone ended at "Sent"; the carrier returns no delivery
+reports. The emulator shows the "Delivered" transition works when a report
+arrives.
+
 ## First run on the real phone, 2026-11-11
 
 **The thread list is completed from the messages, not taken from the system's

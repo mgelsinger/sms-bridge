@@ -6,25 +6,21 @@ Last updated: 2026-11-14.
 
 ## Where things stand
 
-- Phases 0, 1, and 2 are done and tagged. Phase 2 passed on Mickey's own
-  hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); the results and
-  what was found on the way are in [PHASE-2.md](PHASE-2.md).
+- Phases 0 to 3 are done and tagged. Phases 2 and 3 passed on Mickey's own
+  hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); results and
+  what was found on the way are in [PHASE-2.md](PHASE-2.md) and
+  [PHASE-3.md](PHASE-3.md).
 - Running on both the phone and the PC since 2026-11-11: dev build
-  dev-5e591cf, paired. On 2026-11-14 Mickey confirmed that texts arriving
-  overnight were in the app and that the red taskbar dot showed. That also
-  covers checklist section 6 (idle phone).
-- Phase 3 (send and reply) is built and green in CI, and the emulated run on
-  2026-11-11 passed all of it. On the real phone so far: a text sent from the
-  PC with Ctrl+N went out once, matched its bubble, and showed in the phone's
-  own messaging app (checklist section 4), but it was sent to Mickey's own
-  number. Still needed for the phase 3 gate, all on the real phone:
-  - a text from the PC to another person's phone that arrives there, and
-    whether the bubble reaches "Delivered" (his carrier sent no delivery
-    report for the text to himself);
-  - checklist section 5: Wi-Fi off on the phone mid-send, back on, exactly one
-    copy sent.
-  Then write `docs/PHASE-3.md` (CI tags the commit that adds it) and start
-  phase 4 from [PLAN.md](PLAN.md).
+  dev-5e591cf, paired, and in ordinary daily use. Texts arrive overnight with
+  the taskbar dot; texts sent from the PC go out once.
+- Mickey will not run the Wi-Fi-drop-mid-send check on his real phone. It is
+  accepted on emulator evidence (DECISIONS.md, "Phase 3 gate"). Do not ask
+  again.
+- Next is phase 4 (harden) from [PLAN.md](PLAN.md). Its gate is a week of
+  daily use, which started in effect on 2026-11-11. Already in place from
+  earlier phases: start after boot, reconnect with a capped wait, tray, MMS
+  images, read-only group threads, search. Not started: autostart on Windows,
+  FTS5 search, signed APK and installer, and the open items below.
 - The agent reaches the phone over adb Wireless debugging, which Mickey turns
   on and pairs himself. Reading the app's status and installing builds is
   fine; permission prompts, pairing approval, and sending texts are his.

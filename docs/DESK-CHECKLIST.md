@@ -74,7 +74,10 @@ Report: roughly how many seconds it took, and whether the dot showed.
 
 Report: each of the above, yes or no.
 
-## 5. Dropping the connection mid-send
+## 5. Dropping the connection mid-send (optional)
+
+This is proven on the emulator and by automated tests, and is not required on
+the real phone (see DECISIONS.md, "Phase 3 gate").
 
 1. On the PC, type a message but do not send it.
 2. Turn the phone's Wi-Fi off, then press Enter on the PC. The bubble should
