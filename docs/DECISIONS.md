@@ -73,6 +73,33 @@ text and is kept in step by triggers on the messages table. An older build
 can still open a version 2 file: it ignores the index and the triggers keep
 working, because every build bundles the same SQLite.
 
+**No Android 17 emulator job in CI yet.** The plan was to run the emulator
+tests on API 37 so the Android 17 thread-index behaviour is exercised for
+real. Five CI runs on a draft PR (#10) showed that no image available on
+2026-11-14 does what the Pixel does:
+
+| Image | What happened |
+| --- | --- |
+| any, with the runner's default device | never comes online; needs a Pixel hardware profile, 4 GB of RAM and an 8 GB disk |
+| `37.0 default` (AOSP) | runs; the system's index lists the thread of an inbound text, so the index gap is not reproduced; texts the app sends are stored with `read_restriction = 65536`, with their threads and addresses, and hidden from the app; creating a thread id is refused |
+| `37.0 google_apis`, `37.2 google_apis_ps16k` | Google Messages is the SMS app, as on the phone, but the emulated system crashes during the first test that sends a text |
+| `37.0 google_atd` | has no SMS app, so injected texts are never stored |
+
+A job on the AOSP image would pass one useful test and need three others
+switched off for reasons that are the image's, not the app's. That is not
+proof of anything on the phone, so it was left out. The API 34 job, the JVM
+tests of the merge logic, and the phone itself remain the evidence.
+
+**The watcher records where "new" begins at once.** Found through CI: it
+waited out its 300 ms debounce first, and a text sent in that gap had its
+stored copy treated as old, never pushed and never tied to its `client_id`.
+The first scan now runs immediately, and the emulator tests wait for it.
+
+**Dependabot's grouped PRs were closed, not merged.** Both had red CI and
+both were migrations (Gradle 9 with Kotlin 2.4, React 19 with TypeScript 7),
+which do not belong in a week whose gate is unchanged daily use. STATUS.md
+lists them as open work.
+
 **New dependencies**
 
 | Dependency | Where | Why |
