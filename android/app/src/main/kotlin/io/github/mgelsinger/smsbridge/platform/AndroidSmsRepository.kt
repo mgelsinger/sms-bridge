@@ -256,6 +256,9 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
 
     override fun threadParticipants(threadId: Long): List<String>? = thread(threadId)?.participants
 
+    /** Whether the thread's members were worked out from a few of its MMS (see [ThreadInfo.partial]). */
+    internal fun membersAreGuessed(threadId: Long): Boolean = thread(threadId)?.partial == true
+
     override fun threadPage(limit: Int, before: ThreadKey?): Page<ThreadSummary, ThreadKey> {
         val all = threads().sortedByDescending { ThreadKey(it.date, it.id) }
         val page = Paging.newestFirst(all, limit, before) { ThreadKey(it.date, it.id) }

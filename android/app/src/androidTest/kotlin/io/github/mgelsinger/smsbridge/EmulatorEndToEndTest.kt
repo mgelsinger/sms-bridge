@@ -272,7 +272,8 @@ class EmulatorEndToEndTest {
      * Regression: a page of history made two provider queries for every MMS it scanned, and it
      * scans 50 rows more than a page holds. On a dozing Pixel each query takes 70 to 400 ms, so
      * a page of a picture-heavy conversation took 10 seconds and more. A page now costs three
-     * queries, plus one per MMS on it where the thread has more than one other member.
+     * queries, plus one per MMS on it where the thread has more than one other member, or
+     * where Android 17 kept the thread out of its index and the members had to be guessed.
      */
     @Test
     fun aPageOfPictureMessagesCostsAFixedNumberOfQueries() {
@@ -299,11 +300,13 @@ class EmulatorEndToEndTest {
             val memberAddresses = checkNotNull(repo.threadParticipants(group))
             assertEquals("both members of the group are listed", 2, memberAddresses.size)
 
+            val guessed = repo.membersAreGuessed(alone)
+            Log.i("SmsBridgeTest", "API ${android.os.Build.VERSION.SDK_INT}: members of the one-to-one thread guessed from its MMS: $guessed")
             var before = repo.queryCount.get()
             val first = checkNotNull(repo.messagePage(alone, 5, null))
             var cost = repo.queryCount.get() - before
             Log.i("SmsBridgeTest", "a page of 5 one-to-one MMS took $cost provider queries")
-            assertTrue("a page of 5 one-to-one MMS took $cost provider queries", cost <= 3)
+            assertTrue("a page of 5 one-to-one MMS took $cost provider queries", cost <= if (guessed) 3 + 5 else 3)
             assertEquals((11 downTo 7).map { "one to one $it" }, first.items.map { it.body })
             for (m in first.items) {
                 assertEquals(MessageKind.MMS, m.kind)
