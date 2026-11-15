@@ -2,57 +2,37 @@
 
 Read this first in a new session. Update it whenever the state below changes.
 
-Last updated: 2026-11-11.
+Last updated: 2026-11-14.
 
 ## Where things stand
 
-- Phases 0 and 1 are done and tagged.
-- Phases 2 (PC read path) and 3 (send and reply) are built and green in CI.
-  Their gates need the real phone and PC: work through
-  [DESK-CHECKLIST.md](DESK-CHECKLIST.md).
-- On 2026-11-11 the installed Windows build (dev-e7b1c25) ran on Mickey's PC
-  against the release APK on a local Android 14 emulator. Pairing, first sync,
-  inbound (0.6 s, screen off), reply, new conversation, connection loss with
-  one copy sent, restart after reboot, and revoke all worked. See the
-  "Emulated desk run" entry in [DECISIONS.md](DECISIONS.md) for what that run
-  cannot show. The phone app has still not run on the real phone.
-- That run found three things, fixed with regression tests: sends made while
-  the PC was still connecting were not queued, the "Allow background use"
-  button stayed after it was accepted, and two mock-phone test bugs that only
-  fail on Windows. Use a dev build newer than dev-e7b1c25 for the desk session.
-- The desk session started the same day on the real phone (Pixel 9 Pro Fold,
-  Android 17), reached over wireless debugging. Checklist sections 1 and 2
-  passed: setup, discovery over mDNS, fingerprint match, pairing, first sync in
-  about 19 seconds. Section 2 exposed that Android 17 hides newer threads from
-  the app's thread list; fixed on both sides (see DECISIONS.md) and confirmed
-  with dev-f5735e9 installed on both: all 42 conversations, history
-  backfilled without re-pairing.
-- Section 4 (sending) passed on the real phone: Ctrl+N to a new number, one
-  copy sent, bubble matched, status Sent. No carrier delivery report was seen.
-- Section 3 latency passed on the real phone: a text from another number
-  arrived at 22:23 with the phone dozing and was in the PC's store 1.0 second
-  after the phone stored it (plan target: 2 seconds). Mickey saw it appear in
-  the app. He does not want Windows pop-ups, so they are now opt-in and a
-  taskbar dot announces unread texts instead (see DECISIONS.md). A text to his
-  own number does not come back as inbound on his carrier.
-- Late on 2026-11-11 the PC stopped completing its catch-up: the rebuilt
-  thread list took over 30 seconds on the dozing phone and the request timed
-  out in a loop. Fixed the same night (fixed query count, see DECISIONS.md);
-  catch-up now takes about a second. Lesson for testing: an established TCP
-  connection is not proof the app is connected; check for the "Connected"
-  state or the phone's `/threads` and `/contacts` log lines.
-- Left running overnight from 22:48 on 2026-11-11: dev-5e591cf on both the
-  phone and the PC, paired, PC app started normally. First thing next session:
-  ask Mickey whether texts that arrived overnight were in the app (that is
-  section 6), and whether the red dot showed on the taskbar icon for them.
-- Still open on the real phone: section 5 (Wi-Fi drop mid-send) and section 6
-  (idle for an hour). `docs/PHASE-2.md` can be written once the taskbar dot is
-  confirmed by Mickey; `docs/PHASE-3.md` waits for section 5.
-- After the checklist passes: write `docs/PHASE-2.md` and `docs/PHASE-3.md`
-  (CI tags the commits that add them), then start phase 4 from
-  [PLAN.md](PLAN.md).
+- Phases 0, 1, and 2 are done and tagged. Phase 2 passed on Mickey's own
+  hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); the results and
+  what was found on the way are in [PHASE-2.md](PHASE-2.md).
+- Running on both the phone and the PC since 2026-11-11: dev build
+  dev-5e591cf, paired. On 2026-11-14 Mickey confirmed that texts arriving
+  overnight were in the app and that the red taskbar dot showed. That also
+  covers checklist section 6 (idle phone).
+- Phase 3 (send and reply) is built and green in CI, and the emulated run on
+  2026-11-11 passed all of it. On the real phone so far: a text sent from the
+  PC with Ctrl+N went out once, matched its bubble, and showed in the phone's
+  own messaging app (checklist section 4), but it was sent to Mickey's own
+  number. Still needed for the phase 3 gate, all on the real phone:
+  - a text from the PC to another person's phone that arrives there, and
+    whether the bubble reaches "Delivered" (his carrier sent no delivery
+    report for the text to himself);
+  - checklist section 5: Wi-Fi off on the phone mid-send, back on, exactly one
+    copy sent.
+  Then write `docs/PHASE-3.md` (CI tags the commit that adds it) and start
+  phase 4 from [PLAN.md](PLAN.md).
+- The agent reaches the phone over adb Wireless debugging, which Mickey turns
+  on and pairs himself. Reading the app's status and installing builds is
+  fine; permission prompts, pairing approval, and sending texts are his.
 - If a checklist step fails: fix it, add a regression test, and re-run the
   step on a new dev build.
+- Testing lesson from 2026-11-11: an established TCP connection is not proof
+  the PC is connected. Check for the "Connected" state, or for `/threads` and
+  `/contacts` in the phone's log with no `WS closed` after them.
 
 ## How this repo is worked
 
@@ -98,6 +78,5 @@ Last updated: 2026-11-11.
 - CI's emulator is API 34. The Android 17 thread-index behaviour is covered
   only by JVM tests of the merge logic; an API 37 emulator job would cover it
   for real.
-- The plan's 2-second inbound latency has not been measured on real hardware.
 - The Windows installer is unsigned and dev APKs use a public dev key.
   Phase 4 covers signed releases.
