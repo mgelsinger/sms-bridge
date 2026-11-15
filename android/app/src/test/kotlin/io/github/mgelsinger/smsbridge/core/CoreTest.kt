@@ -118,6 +118,27 @@ class RowMappingTest {
         assertEquals(false, RowMapping.isAttachment("text/plain"))
         assertEquals(false, RowMapping.isAttachment("application/smil"))
     }
+
+    /** A page of MMS is served from one part query, so the rows of many messages arrive mixed. */
+    @Test
+    fun partRowsOfManyMessagesAreSortedIntoEachMessage() {
+        val content = RowMapping.content(
+            listOf(
+                PartRow(201, 1, "application/smil", "<smil/>", null),
+                PartRow(202, 2, "text/plain", "second", null),
+                PartRow(201, 3, "TEXT/PLAIN", "line one", null),
+                PartRow(201, 4, "image/jpeg", null, "a.jpg"),
+                PartRow(201, 5, "text/plain", "line two", null),
+                PartRow(203, 6, "image/png", null, null),
+                PartRow(203, 7, null, "no content type", null),
+                PartRow(203, 8, "text/plain", null, null),
+            ),
+        )
+        assertEquals(MmsContent("line one\nline two", listOf(MmsPart(4, "image/jpeg", null, "a.jpg"))), content[201])
+        assertEquals(MmsContent("second", emptyList()), content[202])
+        assertEquals(MmsContent(null, listOf(MmsPart(6, "image/png", null, null))), content[203])
+        assertNull(content[204], "a message without part rows has no entry")
+    }
 }
 
 class PairingManagerTest {

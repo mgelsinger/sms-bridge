@@ -3,6 +3,30 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Phase 4, 2026-11-14
+
+**A page of history costs three provider queries, plus one per MMS only in
+group threads.** It used to cost two per MMS scanned, and a page scans 50 rows
+more than it returns. Now the page is chosen from the two table scans first,
+the parts of every MMS on it come from one query, and address rows are read
+only for the MMS on the page. Android has no way to read the address rows of
+several messages at once, so those stay one query each. They are skipped
+altogether in a one-to-one thread, where the other party is the sender of
+every inbound message and the recipient of every outbound one. That shortcut
+is not taken for a thread whose member list was guessed from a few MMS
+(Android 17, MMS-only, not in the system's index), because the guess can miss
+someone. Catch-up sync reads parts and addresses only for the rows that fit
+the page. Measured on the emulator: 3 queries for a one-to-one page, 8 for a
+group page of 5 MMS. Not measured on the real phone yet.
+
+**Pages of messages may take 90 seconds on the PC; everything else stays at
+30.** What is left is one address lookup per group MMS at up to 400 ms on a
+dozing phone: about 40 seconds for a first-sync page of 100, about 85 for a
+catch-up page of 200. 90 covers both. The cost is that a phone which vanishes
+in the middle of a page is noticed after 90 seconds, not 30, and only for that
+request; connecting still gives up after 10. Smaller pages were the
+alternative, and would have made every sync slower to save a rare wait.
+
 ## Phase 3 gate, 2026-11-14
 
 **The disconnect-mid-send check is accepted on emulator evidence.** The plan's

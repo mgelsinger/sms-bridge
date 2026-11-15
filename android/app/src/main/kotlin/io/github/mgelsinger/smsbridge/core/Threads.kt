@@ -7,6 +7,11 @@ data class ThreadInfo(
     val count: Int,
     val participants: List<String>,
     val snippet: String?,
+    /**
+     * The participants were worked out from a few of the thread's MMS and may be missing
+     * someone, so they cannot stand in for a message's own address rows.
+     */
+    val partial: Boolean = false,
 )
 
 /** What the message tables themselves hold for a thread: how many messages, and when the newest one is from. */

@@ -1,6 +1,10 @@
 package io.github.mgelsinger.smsbridge
 
 import android.Manifest
+import android.content.ContentValues
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.Telephony
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,6 +24,7 @@ import io.github.mgelsinger.smsbridge.platform.KeystoreIdentity
 import io.github.mgelsinger.smsbridge.platform.MessageWatcher
 import io.github.mgelsinger.smsbridge.protocol.Direction
 import io.github.mgelsinger.smsbridge.protocol.HelloFrame
+import io.github.mgelsinger.smsbridge.protocol.MessageKind
 import io.github.mgelsinger.smsbridge.protocol.MessageFrame
 import io.github.mgelsinger.smsbridge.protocol.MessagesPage
 import io.github.mgelsinger.smsbridge.protocol.PairResponse
@@ -256,6 +261,111 @@ class EmulatorEndToEndTest {
         val idleCost = repo.queryCount.get() - idleBefore
         assertTrue("nothing is new", idle.messages.isEmpty())
         assertTrue("an idle poll took $idleCost provider queries", idleCost <= 2)
+    }
+
+    /**
+     * Regression: a page of history made two provider queries for every MMS it scanned, and it
+     * scans 50 rows more than a page holds. On a dozing Pixel each query takes 70 to 400 ms, so
+     * a page of a picture-heavy conversation took 10 seconds and more. A page now costs three
+     * queries, plus one per MMS on it where the thread has more than one other member.
+     */
+    @Test
+    fun aPageOfPictureMessagesCostsAFixedNumberOfQueries() {
+        val resolver = context.contentResolver
+        val stored = mutableListOf<Long>()
+        shell("appops set ${context.packageName} WRITE_SMS allow")
+        try {
+            val start = repo.latestCursor()
+            val seconds = System.currentTimeMillis() / 1000 - 1000
+            val friend = "5550201"
+            val members = listOf("5550202", "5550203")
+            val alone = Telephony.Threads.getOrCreateThreadId(context, friend)
+            val group = Telephony.Threads.getOrCreateThreadId(context, members.toSet())
+            repeat(12) { i -> stored += storeMms(alone, friend, seconds + i, "one to one $i") }
+            repeat(12) { i -> stored += storeMms(group, members[i % 2], seconds + i, "group $i from ${members[i % 2]}") }
+            assertTrue("the provider stored the test MMS: $stored", stored.all { it > 0 } && stored.distinct().size == 24)
+
+            // The watcher shares the repository; keep its queries out of the count.
+            watcher.stop()
+            Thread.sleep(1_000)
+            repo.forgetThreads()
+            repo.threadPage(200, null) // The thread list is kept for a minute; pages do not pay for it again.
+            val friendAddress = checkNotNull(repo.threadParticipants(alone)).single()
+            val memberAddresses = checkNotNull(repo.threadParticipants(group))
+            assertEquals("both members of the group are listed", 2, memberAddresses.size)
+
+            var before = repo.queryCount.get()
+            val first = checkNotNull(repo.messagePage(alone, 5, null))
+            var cost = repo.queryCount.get() - before
+            Log.i("SmsBridgeTest", "a page of 5 one-to-one MMS took $cost provider queries")
+            assertTrue("a page of 5 one-to-one MMS took $cost provider queries", cost <= 3)
+            assertEquals((11 downTo 7).map { "one to one $it" }, first.items.map { it.body })
+            for (m in first.items) {
+                assertEquals(MessageKind.MMS, m.kind)
+                assertEquals(Direction.IN, m.direction)
+                assertEquals(friendAddress, m.address)
+                assertEquals("one picture each: ${m.parts}", listOf("image/jpeg"), m.parts.map { it.contentType })
+            }
+            assertEquals("no part is handed to two messages", 5, first.items.flatMap { it.parts }.map { it.partId }.distinct().size)
+            // Walking back reaches every message once.
+            val seen = first.items.map { it.id }.toMutableList()
+            var next = first.next
+            while (next != null) {
+                val page = checkNotNull(repo.messagePage(alone, 5, next))
+                seen += page.items.map { it.id }
+                next = page.next
+            }
+            assertEquals(stored.take(12).reversed().map { "mms:$it" }, seen)
+
+            before = repo.queryCount.get()
+            val shared = checkNotNull(repo.messagePage(group, 5, null))
+            cost = repo.queryCount.get() - before
+            Log.i("SmsBridgeTest", "a page of 5 group MMS took $cost provider queries")
+            assertTrue("a page of 5 group MMS took $cost provider queries", cost <= 3 + 5)
+            assertEquals((11 downTo 7).map { "group $it from ${members[it % 2]}" }, shared.items.map { it.body })
+            for (m in shared.items) {
+                assertTrue("${m.address} is a member", m.address in memberAddresses)
+                assertTrue("the sender is the one who wrote it: ${m.address}, ${m.body}", m.address.endsWith(m.body.orEmpty().substringAfterLast(' ')))
+            }
+
+            // Catching up: only the rows that fit the page are looked up, not all 24 that are new.
+            repo.forgetThreads()
+            before = repo.queryCount.get()
+            val sync = repo.messagesSince(start, 4)
+            cost = repo.queryCount.get() - before
+            Log.i("SmsBridgeTest", "a sync page of 4 with 24 new MMS took $cost provider queries")
+            assertTrue("more remain", sync.hasMore)
+            assertTrue("a sync page of 4 took $cost provider queries", cost <= 2 + 8 + 1 + 4)
+        } finally {
+            stored.filter { it > 0 }.forEach { resolver.delete(Uri.parse("content://mms/$it"), null, null) }
+            shell("appops set ${context.packageName} WRITE_SMS default")
+        }
+    }
+
+    private fun shell(command: String) {
+        val out = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+        ParcelFileDescriptor.AutoCloseInputStream(out).use { it.readBytes() }
+    }
+
+    /** Stores a received picture message the way the system's messaging app would. Needs the WRITE_SMS app-op. */
+    private fun storeMms(threadId: Long, from: String, seconds: Long, text: String): Long {
+        val resolver = context.contentResolver
+        val message = ContentValues().apply {
+            put("thread_id", threadId)
+            put("date", seconds)
+            put("msg_box", 1) // inbox
+            put("read", 1)
+            put("m_type", 132) // retrieve-conf, a received message
+            put("ct_t", "application/vnd.wap.multipart.related")
+        }
+        val id = resolver.insert(Telephony.Mms.CONTENT_URI, message)?.lastPathSegment?.toLongOrNull() ?: return -1
+        if (id <= 0) return -1
+        resolver.insert(Uri.parse("content://mms/$id/addr"), ContentValues().apply { put("address", from); put("type", 137); put("charset", 106) })
+        resolver.insert(Uri.parse("content://mms/$id/addr"), ContentValues().apply { put("address", "insert-address-token"); put("type", 151); put("charset", 106) })
+        resolver.insert(Uri.parse("content://mms/$id/part"), ContentValues().apply { put("ct", "application/smil"); put("text", "<smil></smil>") })
+        resolver.insert(Uri.parse("content://mms/$id/part"), ContentValues().apply { put("ct", "image/jpeg"); put("name", "picture-$id.jpg") })
+        resolver.insert(Uri.parse("content://mms/$id/part"), ContentValues().apply { put("ct", "text/plain"); put("text", text) })
+        return id
     }
 
     /**

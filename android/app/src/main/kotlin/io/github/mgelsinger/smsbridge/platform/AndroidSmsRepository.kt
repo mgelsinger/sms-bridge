@@ -14,10 +14,12 @@ import android.telephony.TelephonyManager
 import io.github.mgelsinger.smsbridge.core.Addressed
 import io.github.mgelsinger.smsbridge.core.DeviceInfo
 import io.github.mgelsinger.smsbridge.core.MessageKey
+import io.github.mgelsinger.smsbridge.core.MmsContent
 import io.github.mgelsinger.smsbridge.core.MmsRow
 import io.github.mgelsinger.smsbridge.core.Page
 import io.github.mgelsinger.smsbridge.core.Paging
 import io.github.mgelsinger.smsbridge.core.PartBytes
+import io.github.mgelsinger.smsbridge.core.PartRow
 import io.github.mgelsinger.smsbridge.core.RowMapping
 import io.github.mgelsinger.smsbridge.core.SmsRepository
 import io.github.mgelsinger.smsbridge.core.SmsRow
@@ -30,7 +32,6 @@ import io.github.mgelsinger.smsbridge.core.ThreadKey
 import io.github.mgelsinger.smsbridge.core.ThreadTally
 import io.github.mgelsinger.smsbridge.protocol.Contact
 import io.github.mgelsinger.smsbridge.protocol.Message
-import io.github.mgelsinger.smsbridge.protocol.MmsPart
 import io.github.mgelsinger.smsbridge.protocol.SimState
 import io.github.mgelsinger.smsbridge.protocol.ThreadSummary
 import java.util.Locale
@@ -205,10 +206,11 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
         return ThreadIndex.complete(indexed, scan.tallies) { id, tally ->
             // SMS rows name the other party. Only a thread without any needs MMS address rows.
             val fromSms = scan.smsAddresses[id].orEmpty()
-            val people = if (fromSms.isNotEmpty()) {
-                ThreadIndex.people(fromSms.map { Addressed(outgoing = false, from = it, to = emptyList()) }, ::normalize)
-            } else {
+            val guessed = fromSms.isEmpty()
+            val people = if (guessed) {
                 peopleFromMms(id, scan.newestMms[id].orEmpty())
+            } else {
+                ThreadIndex.people(fromSms.map { Addressed(outgoing = false, from = it, to = emptyList()) }, ::normalize)
             }
             if (people.isEmpty()) return@complete null
             val snippet = if (id in smsIsNewest) {
@@ -216,7 +218,7 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
             } else {
                 scan.newestMms[id]?.firstOrNull()?.let { texts[it.id] }
             }
-            ThreadInfo(id = id, date = tally.latest, count = tally.count, participants = people, snippet = snippet)
+            ThreadInfo(id = id, date = tally.latest, count = tally.count, participants = people, snippet = snippet, partial = guessed)
         }
     }
 
@@ -243,14 +245,16 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
         cached = null
     }
 
-    private fun participantsByThread(): Map<Long, List<String>> = threads().associate { it.id to it.participants }
+    private fun threadsById(): Map<Long, ThreadInfo> = threads().associateBy { it.id }
 
-    override fun threadParticipants(threadId: Long): List<String>? =
-        participantsByThread()[threadId] ?: run {
+    private fun thread(threadId: Long): ThreadInfo? =
+        threadsById()[threadId] ?: run {
             // Perhaps a thread newer than the kept list.
             forgetThreads()
-            participantsByThread()[threadId]
+            threadsById()[threadId]
         }
+
+    override fun threadParticipants(threadId: Long): List<String>? = thread(threadId)?.participants
 
     override fun threadPage(limit: Int, before: ThreadKey?): Page<ThreadSummary, ThreadKey> {
         val all = threads().sortedByDescending { ThreadKey(it.date, it.id) }
@@ -285,26 +289,38 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
     // Messages ------------------------------------------------------------
 
     override fun messagePage(threadId: Long, limit: Int, before: MessageKey?): Page<Message, MessageKey>? {
-        val people = threadParticipants(threadId) ?: return null
+        val thread = thread(threadId) ?: return null
+        val people = thread.participants
         val take = limit + PAGE_SLACK
         val smsSel = "thread_id = ?" + if (before != null) " AND date <= ?" else ""
         val smsArgs = listOfNotNull(threadId.toString(), before?.date?.toString()).toTypedArray()
         val sms = querySms(smsSel, smsArgs, "date DESC, _id DESC", take) { people }.mapNotNull { it.second }
         val mmsArgs = listOfNotNull(threadId.toString(), before?.date?.let { (it / 1000).toString() }).toTypedArray()
-        val mms = queryMms(smsSel, mmsArgs, "date DESC, _id DESC", take) { people }.mapNotNull { it.second }
-        val key = { m: Message -> MessageKey.of(m.date, m.id) }
-        return Paging.newestFirst((sms + mms).sortedByDescending(key), limit, before, key)
+        val heads = queryMmsHeads(smsSel, mmsArgs, "date DESC, _id DESC", take).filter { it.messageBox != RowMapping.MMS_DRAFTS }
+        // Choose the page from what the two table scans returned, and only then pay for the
+        // parts and addresses of the MMS on it. More rows are scanned than a page holds.
+        val entries = sms.map { PageEntry(MessageKey.of(it.date, it.id), it, null) } +
+            heads.map { PageEntry(MessageKey(it.dateSeconds * 1000, "mms", it.id), null, it) }
+        val page = Paging.newestFirst(entries.sortedByDescending { it.key }, limit, before) { it.key }
+        val mms = hydrate(page.items.mapNotNull { it.mms }) { thread }.toMap()
+        return Page(page.items.mapNotNull { e -> e.sms ?: e.mms?.let { mms[it.id] } }, page.next)
     }
+
+    private class PageEntry(val key: MessageKey, val sms: Message?, val mms: MmsHead?)
 
     override fun messagesSince(cursor: SyncCursor, limit: Int): SyncResult {
         // The watcher asks this every 30 seconds and usually finds nothing. The thread
         // list is only needed, and only rebuilt, when there are new rows to describe.
-        val people = lazy {
+        val threads = lazy {
             forgetThreads()
-            participantsByThread()
+            threadsById()
         }
-        val sms = querySms("_id > ?", arrayOf(cursor.sms.toString()), "_id ASC", limit + 1) { people.value[it].orEmpty() }
-        val mms = queryMms("_id > ?", arrayOf(cursor.mms.toString()), "_id ASC", limit + 1) { people.value[it].orEmpty() }
+        val sms = querySms("_id > ?", arrayOf(cursor.sms.toString()), "_id ASC", limit + 1) { threads.value[it]?.participants.orEmpty() }
+        val heads = queryMmsHeads("_id > ?", arrayOf(cursor.mms.toString()), "_id ASC", limit + 1)
+        // A sync page takes the SMS rows first and `limit` rows in all. MMS rows past that
+        // only say that more remain, so their parts and addresses are not read.
+        val room = (limit - sms.size).coerceAtLeast(0)
+        val mms = hydrate(heads.take(room)) { threads.value[it] } + heads.drop(room).map { it.id to null }
         return SyncPaging.assemble(cursor, sms, mms, limit)
     }
 
@@ -339,35 +355,53 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
             }
         }.orEmpty()
 
-    private fun queryMms(
-        selection: String,
-        args: Array<String>,
-        order: String,
-        max: Int,
-        peopleFor: (Long) -> List<String>,
-    ): List<Pair<Long, Message?>> =
+    /** A row of content://mms, before its parts and addresses are read. */
+    private class MmsHead(val id: Long, val threadId: Long, val dateSeconds: Long, val messageBox: Int, val read: Boolean)
+
+    private fun queryMmsHeads(selection: String, args: Array<String>, order: String, max: Int): List<MmsHead> =
         query(Telephony.Mms.CONTENT_URI, MMS_COLUMNS, selection, args, order)?.use { c ->
             buildList {
                 while (size < max && c.moveToNext()) {
-                    val id = c.getLong(0)
-                    val threadId = c.getLong(1)
-                    val (from, to) = mmsAddresses(id)
-                    val (text, parts) = mmsParts(id)
-                    val row = MmsRow(
-                        id = id,
-                        threadId = threadId,
-                        dateSeconds = c.getLong(2),
-                        messageBox = c.getInt(3),
-                        read = c.getInt(4) != 0,
-                        from = from,
-                        to = to,
-                        text = text,
-                        parts = parts,
-                    )
-                    add(id to RowMapping.mms(row, peopleFor(threadId), ::normalize))
+                    add(MmsHead(id = c.getLong(0), threadId = c.getLong(1), dateSeconds = c.getLong(2), messageBox = c.getInt(3), read = c.getInt(4) != 0))
                 }
             }
         }.orEmpty()
+
+    /**
+     * Turns MMS rows into messages. Every provider query costs a few hundred milliseconds
+     * on a dozing phone, so the parts of all the rows come from one query. Address rows
+     * can only be read one message at a time; they are skipped where the thread already
+     * says who the other party is, and never read for rows that are not passed in here.
+     */
+    private fun hydrate(heads: List<MmsHead>, threadFor: (Long) -> ThreadInfo?): List<Pair<Long, Message?>> {
+        if (heads.isEmpty()) return emptyList()
+        val content = mmsContent(heads.map { it.id })
+        return heads.map { head ->
+            val thread = threadFor(head.threadId)
+            val people = thread?.participants.orEmpty()
+            // In a one-to-one thread the other party sent every inbound message and received
+            // every outbound one. A participant list guessed from a few MMS is not proof of that.
+            val other = people.singleOrNull()?.takeIf { thread?.partial == false }
+            val (from, to) = when {
+                other == null -> mmsAddresses(head.id)
+                head.messageBox == RowMapping.MMS_INBOX -> other to emptyList()
+                else -> null to listOf(other)
+            }
+            val own = content[head.id] ?: MmsContent.EMPTY
+            val row = MmsRow(
+                id = head.id,
+                threadId = head.threadId,
+                dateSeconds = head.dateSeconds,
+                messageBox = head.messageBox,
+                read = head.read,
+                from = from,
+                to = to,
+                text = own.text,
+                parts = own.parts,
+            )
+            head.id to RowMapping.mms(row, people, ::normalize)
+        }
+    }
 
     private fun mmsAddresses(mmsId: Long): Pair<String?, List<String>> {
         var from: String? = null
@@ -384,20 +418,23 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
         return from to recipients
     }
 
-    private fun mmsParts(mmsId: Long): Pair<String?, List<MmsPart>> {
-        val text = StringBuilder()
-        val parts = mutableListOf<MmsPart>()
-        query(MMS_PARTS, arrayOf("_id", "ct", "text", "name", "cl"), "mid = ?", arrayOf(mmsId.toString()), null)?.use { c ->
-            while (c.moveToNext()) {
-                val ct = c.getStringOrNull(1) ?: continue
-                if (ct.equals("text/plain", ignoreCase = true)) {
-                    c.getStringOrNull(2)?.let { if (text.isNotEmpty()) text.append('\n'); text.append(it) }
-                } else if (RowMapping.isAttachment(ct)) {
-                    parts += MmsPart(partId = c.getLong(0), contentType = ct, size = null, name = c.getStringOrNull(3) ?: c.getStringOrNull(4))
+    /** The text and attachments of each of [ids], in one query per [PART_BATCH] messages. */
+    private fun mmsContent(ids: List<Long>): Map<Long, MmsContent> {
+        val rows = ArrayList<PartRow>()
+        for (batch in ids.chunked(PART_BATCH)) {
+            query(MMS_PARTS, arrayOf("_id", "mid", "ct", "text", "name", "cl"), "mid IN (${batch.joinToString(",")})", null, "_id")?.use { c ->
+                while (c.moveToNext()) {
+                    rows += PartRow(
+                        messageId = c.getLong(1),
+                        partId = c.getLong(0),
+                        contentType = c.getStringOrNull(2),
+                        text = c.getStringOrNull(3),
+                        name = c.getStringOrNull(4) ?: c.getStringOrNull(5),
+                    )
                 }
             }
         }
-        return text.toString().ifEmpty { null } to parts
+        return RowMapping.content(rows)
     }
 
     override fun mmsPart(partId: Long): PartBytes? {
@@ -478,6 +515,9 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
         private const val PDU_TO = 151
         private const val PDU_CC = 130
         private const val PAGE_SLACK = 50
+
+        /** The largest page the API serves is 500 messages, so a page's parts are one query. */
+        private const val PART_BATCH = 500
         private const val REBUILD_MMS_SCAN = 5
         private const val THREADS_CACHE_MS = 60_000L
         private const val MAX_PART_BYTES = 20 * 1024 * 1024

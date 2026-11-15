@@ -69,6 +69,7 @@ export async function startMockPhone(options = {}) {
     sendDelayMs: 250,
     deliveryDelayMs: 800,
     failTo: [],
+    readDelayMs: 0,
     strict: false,
     log: (line) => console.log(line),
     ...options,
@@ -204,6 +205,8 @@ export async function startMockPhone(options = {}) {
     try {
       if (req.method === "POST" && path === "/pair") return await handlePair(req, res);
       if (!authorized(req)) return sendError(res, 401, "unauthorized", "missing or unknown token");
+      // A dozing phone answers reads slowly; let tests see how the client copes.
+      if (opts.readDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, opts.readDelayMs));
 
       if (req.method === "GET" && path === "/status") return sendJson(res, 200, "status", statusBody());
 

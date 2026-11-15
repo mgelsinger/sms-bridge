@@ -65,12 +65,12 @@ Last updated: 2026-11-14.
   find out what qualifies, since this app is one in spirit. Source:
   https://developer.android.com/about/versions/17/behavior-changes-all and
   https://developer.android.com/about/versions/17/behavior-changes-17
-- History fetches are slow on the real phone: each MMS costs two provider
-  lookups at 70 to 400 ms each while the phone dozes, so a 100-message page of
-  an MMS-heavy thread can take 10 seconds or more, and one with 70 MMS could
-  pass the PC's 30 second timeout. Batch the part lookups per page and
-  consider a longer timeout for history pages. (The thread list itself was
-  fixed on 2026-11-11; see DECISIONS.md.)
+- History fetches: fixed in code on 2026-11-14, not yet measured on the real
+  phone. A page now costs 3 provider queries, plus one per MMS only in group
+  threads, and the PC allows 90 seconds for a page of messages (DECISIONS.md,
+  "Phase 4"). To confirm on the phone: open an old picture-heavy conversation
+  on the PC and scroll up; the phone's log shows how long each
+  `/threads/N/messages` took.
 - CI's emulator is API 34. The Android 17 thread-index behaviour is covered
   only by JVM tests of the merge logic; an API 37 emulator job would cover it
   for real.

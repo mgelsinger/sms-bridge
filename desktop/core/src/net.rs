@@ -25,6 +25,10 @@ pub type PhoneSocket = WebSocketStream<TlsStream<TcpStream>>;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Pages of messages get longer. The phone asks its message store once per
+/// group MMS on the page, each answer takes up to 400 ms while the phone
+/// dozes, and a sync page holds up to 200 messages.
+const HISTORY_TIMEOUT: Duration = Duration::from_secs(90);
 
 #[derive(Debug, thiserror::Error)]
 pub enum NetError {
@@ -276,6 +280,8 @@ pub struct PhoneClient {
     address: PhoneAddress,
     token: Option<String>,
     tls: TlsConnector,
+    request_timeout: Duration,
+    history_timeout: Duration,
 }
 
 impl PhoneClient {
@@ -285,7 +291,17 @@ impl PhoneClient {
             address,
             token,
             tls,
+            request_timeout: REQUEST_TIMEOUT,
+            history_timeout: HISTORY_TIMEOUT,
         })
+    }
+
+    /// Replaces how long a request may take: `history` for pages of messages,
+    /// `request` for everything else. Tests use this to avoid waiting for real.
+    pub fn with_timeouts(mut self, request: Duration, history: Duration) -> Self {
+        self.request_timeout = request;
+        self.history_timeout = history;
+        self
     }
 
     pub fn address(&self) -> &PhoneAddress {
@@ -322,6 +338,7 @@ impl PhoneClient {
         method: &str,
         path: &str,
         body: Option<Vec<u8>>,
+        limit: Duration,
     ) -> Result<(u16, String, Bytes), NetError> {
         let fut = async {
             let tls = self.connect().await?;
@@ -364,7 +381,7 @@ impl PhoneClient {
             driver.abort();
             Ok((status, content_type, bytes))
         };
-        tokio::time::timeout(REQUEST_TIMEOUT, fut)
+        tokio::time::timeout(limit, fut)
             .await
             .map_err(|_| NetError::Timeout)?
     }
@@ -375,7 +392,18 @@ impl PhoneClient {
         path: &str,
         body: Option<Vec<u8>>,
     ) -> Result<T, NetError> {
-        let (status, _, bytes) = self.request(method, path, body).await?;
+        self.json_within(method, path, body, self.request_timeout)
+            .await
+    }
+
+    async fn json_within<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Vec<u8>>,
+        limit: Duration,
+    ) -> Result<T, NetError> {
+        let (status, _, bytes) = self.request(method, path, body, limit).await?;
         if status == 200 {
             return serde_json::from_slice(&bytes).map_err(|e| NetError::Decode(e.to_string()));
         }
@@ -418,18 +446,24 @@ impl PhoneClient {
         limit: u32,
         cursor: Option<&str>,
     ) -> Result<MessagesPage, NetError> {
-        self.json(
+        self.json_within(
             "GET",
             &with_query(&format!("/threads/{thread_id}/messages"), limit, cursor),
             None,
+            self.history_timeout,
         )
         .await
     }
 
     /// Incremental sync. `None` returns a cursor for "now" and no messages.
     pub async fn sync(&self, cursor: Option<&str>, limit: u32) -> Result<SyncPage, NetError> {
-        self.json("GET", &with_query("/messages", limit, cursor), None)
-            .await
+        self.json_within(
+            "GET",
+            &with_query("/messages", limit, cursor),
+            None,
+            self.history_timeout,
+        )
+        .await
     }
 
     pub async fn contacts(&self) -> Result<ContactsResponse, NetError> {
@@ -439,7 +473,12 @@ impl PhoneClient {
     /// Raw bytes and content type of an MMS attachment.
     pub async fn mms_part(&self, part_id: u64) -> Result<(String, Bytes), NetError> {
         let (status, content_type, bytes) = self
-            .request("GET", &format!("/mms/{part_id}"), None)
+            .request(
+                "GET",
+                &format!("/mms/{part_id}"),
+                None,
+                self.request_timeout,
+            )
             .await?;
         if status == 200 {
             Ok((content_type, bytes))

@@ -174,3 +174,28 @@ async fn probing_reads_the_fingerprint_without_sending_anything() {
         .expect("probe");
     assert_eq!(seen, mock.address.fingerprint);
 }
+
+/// Regression: on a dozing phone a page of picture messages took longer than the
+/// 30 seconds every request was given, and the PC gave up on history it would
+/// have received. Pages of messages get a longer limit than other requests.
+#[tokio::test]
+async fn pages_of_messages_may_take_longer_than_other_requests() {
+    let token = "T".repeat(43);
+    let mock = start_mock(&[("MOCK_TOKEN", &token), ("MOCK_READ_DELAY_MS", "600")]);
+    let client = PhoneClient::new(mock.address.clone(), Some(token))
+        .expect("client")
+        .with_timeouts(Duration::from_millis(200), Duration::from_secs(20));
+    let err = client.status().await.expect_err("too slow for a status");
+    assert!(matches!(err, NetError::Timeout), "{err:?}");
+    let err = client.threads(10, None).await.expect_err("too slow");
+    assert!(matches!(err, NetError::Timeout), "{err:?}");
+    let page = client
+        .thread_messages(11, 10, None)
+        .await
+        .expect("a slow page of history still arrives");
+    assert!(!page.messages.is_empty());
+    client
+        .sync(None, 10)
+        .await
+        .expect("a slow sync page still arrives");
+}

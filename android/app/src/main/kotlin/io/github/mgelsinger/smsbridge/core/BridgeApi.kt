@@ -82,13 +82,15 @@ class BridgeApi(
      * server lets through without a token.
      */
     suspend fun handle(method: String, path: String, query: Map<String, String>, body: String?): ApiResponse {
+        val started = System.nanoTime()
         val response = try {
             route(method, path, query, body)
         } catch (e: Exception) {
             log("ERROR $method $path: ${e.javaClass.simpleName}")
             error(500, ErrorCode.INTERNAL, "internal error")
         }
-        log("$method $path ${response.status}")
+        // How long the phone took is what tells a slow provider from a slow network.
+        log("$method $path ${response.status} in ${(System.nanoTime() - started) / 1_000_000} ms")
         return response
     }
 

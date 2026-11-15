@@ -7,6 +7,7 @@
 //   MOCK_INBOUND_EVERY_S simulate an incoming text every N seconds (default off)
 //   MOCK_FAIL_TO         comma-separated numbers whose sends fail
 //   MOCK_FIRST_SMS_ID    continue SMS ids from here, as a restarted phone would
+//   MOCK_READ_DELAY_MS   answer every authorized request this late, as a dozing phone would
 import { startMockPhone } from "./mock.mjs";
 
 const env = process.env;
@@ -17,6 +18,7 @@ const phone = await startMockPhone({
   tokens: env.MOCK_TOKEN ? [env.MOCK_TOKEN] : [],
   failTo: (env.MOCK_FAIL_TO ?? "").split(",").filter(Boolean),
   ...(env.MOCK_FIRST_SMS_ID ? { firstSmsId: Number(env.MOCK_FIRST_SMS_ID) } : {}),
+  readDelayMs: Number(env.MOCK_READ_DELAY_MS ?? 0),
 });
 
 console.log(`mock phone "${phone.deviceName}" listening on https://${phone.host}:${phone.port}`);

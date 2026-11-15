@@ -31,6 +31,16 @@ data class MmsRow(
     val parts: List<MmsPart>,
 )
 
+/** A row of content://mms/part. */
+data class PartRow(val messageId: Long, val partId: Long, val contentType: String?, val text: String?, val name: String?)
+
+/** What an MMS carries: its text, and the parts that are attachments. */
+data class MmsContent(val text: String?, val parts: List<MmsPart>) {
+    companion object {
+        val EMPTY = MmsContent(null, emptyList())
+    }
+}
+
 object RowMapping {
     // Telephony.Sms.MESSAGE_TYPE_*
     const val SMS_INBOX = 1
@@ -114,6 +124,20 @@ object RowMapping {
             clientId = null,
         )
     }
+
+    /**
+     * Sorts the part rows of any number of messages into each message's text (its
+     * text/plain parts, joined by newlines in row order) and attachments. One provider
+     * query can then serve a whole page of messages.
+     */
+    fun content(rows: List<PartRow>): Map<Long, MmsContent> =
+        rows.groupBy { it.messageId }.mapValues { (_, own) ->
+            val texts = own.filter { it.contentType.equals("text/plain", ignoreCase = true) }.mapNotNull { it.text }
+            val parts = own
+                .filter { it.contentType != null && isAttachment(it.contentType) }
+                .map { MmsPart(partId = it.partId, contentType = it.contentType.orEmpty(), size = null, name = it.name) }
+            MmsContent(texts.joinToString("\n").ifEmpty { null }, parts)
+        }
 
     /** Parts that are not message content: the text itself and SMIL layout. */
     fun isAttachment(contentType: String): Boolean {
