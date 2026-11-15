@@ -20,9 +20,9 @@ Last updated: 2026-11-14.
   daily use, which started in effect on 2026-11-11. Already in place from
   earlier phases: start after boot, reconnect with a capped wait, tray, MMS
   images, read-only group threads, search. Built in phase 4 so far: faster
-  history pages and "Start with Windows" (off by default, in the status
-  menu). Not started: FTS5 search, signed APK and installer, and the open
-  items below.
+  history pages, "Start with Windows" (off by default, in the status
+  menu), and FTS5 search. Not started: signed APK and installer, and the
+  open items below.
 - The agent reaches the phone over adb Wireless debugging, which Mickey turns
   on and pairs himself. Reading the app's status and installing builds is
   fine; permission prompts, pairing approval, and sending texts are his.
@@ -50,6 +50,12 @@ Last updated: 2026-11-14.
   fills in the plan, newest first.
 
 ## Open items
+
+- Search changed with the FTS5 index: it matches whole words and word
+  beginnings in any order, and no longer text in the middle of a word
+  (DECISIONS.md, "Phase 4"). The first start of the new Windows build
+  upgrades the local store in place. The search box still looks only at
+  message text; the plan also wants it to filter by contact name and number.
 
 - "Start with Windows", the tray-only start at login, and the one-copy rule
   are proven only as far as CI goes (the registry round trip, the rules, the

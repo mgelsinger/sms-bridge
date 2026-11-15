@@ -55,6 +55,24 @@ used to start a second copy syncing beside the first. A second start now
 shows the first copy's window and exits. The window is created hidden and
 shown by the app once it has decided whether this is a start at login.
 
+**Search matches words and word beginnings, not any run of letters.** The
+LIKE scan found "inner" inside "dinner". The FTS5 index (SQLite's own, in the
+bundled build; no new dependency) finds a message when it has every word
+typed, whole or as the beginning of a word, in any order, ignoring case and
+accents: "fri din" finds "Dinner on Friday?", "cafe" finds "CAFÉ", and
+"inner" no longer finds "dinner". That is how people type into a search box,
+and it needs no fallback for one- and two-letter queries, which the
+alternative (the trigram tokenizer, which keeps substring matching) does.
+Results stay newest first, not ranked. Everything typed is quoted before it
+reaches FTS5, so quotes, stars, AND and the like are text, never syntax.
+
+**The store has numbered schema steps now.** Version 2 adds the index and
+fills it from the messages already stored, in one transaction, the first
+time the new build opens the file. The index keeps no second copy of the
+text and is kept in step by triggers on the messages table. An older build
+can still open a version 2 file: it ignores the index and the triggers keep
+working, because every build bundles the same SQLite.
+
 **New dependencies**
 
 | Dependency | Where | Why |

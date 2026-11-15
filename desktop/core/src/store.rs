@@ -12,7 +12,73 @@ use std::path::Path;
 
 pub type Result<T> = rusqlite::Result<T>;
 
-const SCHEMA_VERSION: i64 = 1;
+/// The schema, one step per version. A store is brought up to date by running
+/// the steps it has not seen, each in its own transaction, so `user_version`
+/// always says exactly which steps are in the file.
+const MIGRATIONS: [&str; 2] = [SCHEMA_V1, SCHEMA_V2];
+
+const SCHEMA_V1: &str = "
+    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS threads (
+        id INTEGER PRIMARY KEY,
+        participants TEXT NOT NULL,
+        snippet TEXT,
+        date INTEGER NOT NULL,
+        phone_unread INTEGER NOT NULL DEFAULT 0,
+        message_count INTEGER NOT NULL DEFAULT 0,
+        local_read_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        thread_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        address TEXT NOT NULL,
+        participants TEXT NOT NULL,
+        body TEXT,
+        parts TEXT NOT NULL,
+        date INTEGER NOT NULL,
+        read INTEGER NOT NULL,
+        status TEXT,
+        client_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS messages_by_thread ON messages (thread_id, date DESC);
+    CREATE TABLE IF NOT EXISTS contacts (number TEXT PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS outbox (
+        client_id TEXT PRIMARY KEY,
+        thread_id INTEGER,
+        to_address TEXT,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        message_id TEXT,
+        error TEXT
+    );";
+
+/// Version 2: a full-text index over message bodies (SQLite FTS5). The index
+/// holds no copy of the text; it points at rows of `messages` and is kept in
+/// step by triggers, so every way a message is written or removed is covered.
+/// Words are compared without case or accents. The last statement indexes the
+/// messages a store from version 1 already holds.
+///
+/// The index is keyed by the `messages` table's rowid, which only a VACUUM
+/// could renumber. This code never runs one; anything that does must follow it
+/// with the `rebuild` command below.
+const SCHEMA_V2: &str = "
+    CREATE VIRTUAL TABLE messages_fts USING fts5(
+        body, content='messages', content_rowid='rowid', tokenize='unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts (rowid, body) VALUES (new.rowid, new.body);
+    END;
+    CREATE TRIGGER messages_fts_delete AFTER DELETE ON messages BEGIN
+        INSERT INTO messages_fts (messages_fts, rowid, body) VALUES ('delete', old.rowid, old.body);
+    END;
+    CREATE TRIGGER messages_fts_update AFTER UPDATE OF body ON messages BEGIN
+        INSERT INTO messages_fts (messages_fts, rowid, body) VALUES ('delete', old.rowid, old.body);
+        INSERT INTO messages_fts (rowid, body) VALUES (new.rowid, new.body);
+    END;
+    INSERT INTO messages_fts (messages_fts) VALUES ('rebuild');";
 
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
@@ -96,49 +162,16 @@ impl Store {
         Self::init(Connection::open_in_memory()?)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        if version < 1 {
-            conn.execute_batch(
-                "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 CREATE TABLE IF NOT EXISTS threads (
-                     id INTEGER PRIMARY KEY,
-                     participants TEXT NOT NULL,
-                     snippet TEXT,
-                     date INTEGER NOT NULL,
-                     phone_unread INTEGER NOT NULL DEFAULT 0,
-                     message_count INTEGER NOT NULL DEFAULT 0,
-                     local_read_at INTEGER
-                 );
-                 CREATE TABLE IF NOT EXISTS messages (
-                     id TEXT PRIMARY KEY,
-                     thread_id INTEGER NOT NULL,
-                     kind TEXT NOT NULL,
-                     direction TEXT NOT NULL,
-                     address TEXT NOT NULL,
-                     participants TEXT NOT NULL,
-                     body TEXT,
-                     parts TEXT NOT NULL,
-                     date INTEGER NOT NULL,
-                     read INTEGER NOT NULL,
-                     status TEXT,
-                     client_id TEXT
-                 );
-                 CREATE INDEX IF NOT EXISTS messages_by_thread ON messages (thread_id, date DESC);
-                 CREATE TABLE IF NOT EXISTS contacts (number TEXT PRIMARY KEY, name TEXT NOT NULL);
-                 CREATE TABLE IF NOT EXISTS outbox (
-                     client_id TEXT PRIMARY KEY,
-                     thread_id INTEGER,
-                     to_address TEXT,
-                     body TEXT NOT NULL,
-                     created_at INTEGER NOT NULL,
-                     status TEXT NOT NULL,
-                     message_id TEXT,
-                     error TEXT
-                 );",
-            )?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        for (step, sql) in (1i64..).zip(MIGRATIONS) {
+            if version < step {
+                let tx = conn.transaction()?;
+                tx.execute_batch(sql)?;
+                tx.pragma_update(None, "user_version", step)?;
+                tx.commit()?;
+            }
         }
         Ok(Self { conn })
     }
@@ -453,36 +486,15 @@ impl Store {
         limit: u32,
     ) -> Result<Vec<MessageView>> {
         let names = self.names()?;
-        let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.thread_id, m.kind, m.direction, m.address, m.body, m.parts, m.date, m.status, m.client_id, o.error
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {MESSAGE_COLUMNS}
              FROM messages m LEFT JOIN outbox o ON o.client_id = m.client_id
              WHERE m.thread_id = ?1 AND m.date < ?2
-             ORDER BY m.date DESC, m.id DESC LIMIT ?3",
-        )?;
+             ORDER BY m.date DESC, m.id DESC LIMIT ?3"
+        ))?;
         let rows = stmt.query_map(
             params![thread_id, before.unwrap_or(u64::MAX >> 1), limit],
-            |r| {
-                let address: String = r.get(4)?;
-                let direction = enum_parse(&r.get::<_, String>(3)?).unwrap_or(Direction::In);
-                Ok(MessageView {
-                    id: r.get(0)?,
-                    thread_id: r.get(1)?,
-                    kind: enum_parse(&r.get::<_, String>(2)?).unwrap_or(MessageKind::Sms),
-                    sender_name: if direction == Direction::In {
-                        names.get(&address).cloned()
-                    } else {
-                        None
-                    },
-                    direction,
-                    address,
-                    body: r.get(5)?,
-                    parts: json_vec(&r.get::<_, String>(6)?),
-                    date: r.get(7)?,
-                    status: r.get::<_, Option<String>>(8)?.and_then(|s| enum_parse(&s)),
-                    client_id: r.get(9)?,
-                    error: r.get(10)?,
-                })
-            },
+            |r| message_view(&names, r),
         )?;
         let mut out: Vec<MessageView> = rows.collect::<Result<_>>()?;
         if before.is_none() {
@@ -518,35 +530,24 @@ impl Store {
         Ok(out)
     }
 
-    /// Case-insensitive substring search over message bodies, newest first.
+    /// Full-text search over message bodies, newest first. A message matches
+    /// when it has every word of `query`, as a whole word or the beginning of
+    /// one, in any order, whatever the case or accents.
     pub fn search(&self, query: &str, limit: u32) -> Result<Vec<MessageView>> {
-        let pattern = format!(
-            "%{}%",
-            query
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_")
-        );
-        let mut stmt = self.conn.prepare(
-            "SELECT id, thread_id FROM messages WHERE body LIKE ?1 ESCAPE '\\' ORDER BY date DESC LIMIT ?2",
-        )?;
-        let hits: Vec<(String, u64)> = stmt
-            .query_map(params![pattern, limit], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<Result<_>>()?;
-        let mut out = Vec::new();
-        for (id, thread) in hits {
-            let date: u64 =
-                self.conn
-                    .query_row("SELECT date FROM messages WHERE id = ?1", [&id], |r| {
-                        r.get(0)
-                    })?;
-            out.extend(
-                self.messages(thread, Some(date + 1), 1)?
-                    .into_iter()
-                    .filter(|m| m.id == id),
-            );
-        }
-        Ok(out)
+        let Some(fts) = fts_query(query) else {
+            return Ok(Vec::new());
+        };
+        let names = self.names()?;
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {MESSAGE_COLUMNS}
+             FROM messages_fts
+             JOIN messages m ON m.rowid = messages_fts.rowid
+             LEFT JOIN outbox o ON o.client_id = m.client_id
+             WHERE messages_fts MATCH ?1
+             ORDER BY m.date DESC, m.id DESC LIMIT ?2"
+        ))?;
+        let rows = stmt.query_map(params![fts, limit], |r| message_view(&names, r))?;
+        rows.collect()
     }
 
     pub fn message_count(&self) -> Result<u64> {
@@ -571,6 +572,46 @@ fn message_rank(s: MessageStatus) -> i64 {
         MessageStatus::Delivered => 2,
         MessageStatus::Failed => 3,
     }
+}
+
+/// What [`message_view`] reads, for a query over `messages m` joined to `outbox o`.
+const MESSAGE_COLUMNS: &str = "m.id, m.thread_id, m.kind, m.direction, m.address, m.body, \
+    m.parts, m.date, m.status, m.client_id, o.error";
+
+fn message_view(names: &HashMap<String, String>, r: &rusqlite::Row<'_>) -> Result<MessageView> {
+    let address: String = r.get(4)?;
+    let direction = enum_parse(&r.get::<_, String>(3)?).unwrap_or(Direction::In);
+    Ok(MessageView {
+        id: r.get(0)?,
+        thread_id: r.get(1)?,
+        kind: enum_parse(&r.get::<_, String>(2)?).unwrap_or(MessageKind::Sms),
+        sender_name: if direction == Direction::In {
+            names.get(&address).cloned()
+        } else {
+            None
+        },
+        direction,
+        address,
+        body: r.get(5)?,
+        parts: json_vec(&r.get::<_, String>(6)?),
+        date: r.get(7)?,
+        status: r.get::<_, Option<String>>(8)?.and_then(|s| enum_parse(&s)),
+        client_id: r.get(9)?,
+        error: r.get(10)?,
+    })
+}
+
+/// Turns what the user typed into an FTS5 query: every word is required, as a
+/// whole word or the beginning of one. Each word is quoted, so nothing typed
+/// is read as FTS5 syntax. Words without a letter or digit cannot match
+/// anything and are dropped; `None` when no word is left.
+fn fts_query(input: &str) -> Option<String> {
+    let words: Vec<String> = input
+        .split_whitespace()
+        .filter(|w| w.chars().any(char::is_alphanumeric))
+        .map(|w| format!("\"{}\"*", w.replace('"', "\"\"")))
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
 const OUTBOX_COLUMNS: &str =
@@ -832,16 +873,231 @@ mod tests {
         );
     }
 
+    fn found(s: &Store, query: &str) -> Vec<String> {
+        s.search(query, 10)
+            .expect("search")
+            .into_iter()
+            .map(|m| m.id)
+            .collect()
+    }
+
+    /// The index and the messages it points at agree. FTS5 checks this itself.
+    fn assert_index_is_sound(s: &Store) {
+        s.conn
+            .execute(
+                "INSERT INTO messages_fts (messages_fts, rank) VALUES ('integrity-check', 1)",
+                [],
+            )
+            .expect("the search index matches the messages");
+    }
+
     #[test]
-    fn search_escapes_wildcards() {
+    fn search_finds_words_and_word_beginnings_in_any_order_newest_first() {
         let mut s = store();
         s.upsert_messages(&[
-            msg("sms:1", 11, Direction::In, 100, "50% off"),
-            msg("sms:2", 11, Direction::In, 200, "500 off"),
+            msg("sms:1", 11, Direction::In, 100, "Dinner on Friday?"),
+            msg(
+                "sms:2",
+                11,
+                Direction::Out,
+                200,
+                "friday works, dinner at 7",
+            ),
+            msg("sms:3", 12, Direction::In, 300, "Running late"),
+            msg("sms:4", 12, Direction::In, 400, "the dinosaur exhibit"),
         ])
         .expect("upsert");
-        assert_eq!(s.search("0%", 10).expect("search").len(), 1);
-        assert_eq!(s.search("OFF", 10).expect("search").len(), 2);
+        assert_eq!(found(&s, "dinner"), ["sms:2", "sms:1"]);
+        assert_eq!(found(&s, "FRIDAY din"), ["sms:2", "sms:1"]);
+        assert_eq!(found(&s, "din"), ["sms:4", "sms:2", "sms:1"]);
+        assert_eq!(found(&s, "late run"), ["sms:3"]);
+        assert_eq!(
+            found(&s, "dinner late"),
+            [] as [&str; 0],
+            "every word is required"
+        );
+        assert_eq!(
+            found(&s, "inner"),
+            [] as [&str; 0],
+            "not the middle of a word"
+        );
+        assert_eq!(s.search("din", 2).expect("search").len(), 2);
+        let hit = &s.search("exhibit", 10).expect("search")[0];
+        assert_eq!(
+            (
+                hit.thread_id,
+                hit.body.as_deref(),
+                hit.sender_name.as_deref()
+            ),
+            (12, Some("the dinosaur exhibit"), Some("Alex Rivera"))
+        );
+    }
+
+    #[test]
+    fn search_ignores_case_and_accents() {
+        let mut s = store();
+        s.upsert_messages(&[
+            msg(
+                "sms:1",
+                11,
+                Direction::In,
+                100,
+                "Meet at the CAF\u{c9} on Main",
+            ),
+            msg("sms:2", 11, Direction::In, 200, "jalape\u{f1}o poppers"),
+        ])
+        .expect("upsert");
+        assert_eq!(found(&s, "cafe"), ["sms:1"]);
+        assert_eq!(found(&s, "caf\u{e9}"), ["sms:1"]);
+        assert_eq!(found(&s, "Jalapeno"), ["sms:2"]);
+    }
+
+    #[test]
+    fn search_reads_what_is_typed_as_text_never_as_query_syntax() {
+        let mut s = store();
+        s.upsert_messages(&[
+            msg("sms:1", 11, Direction::In, 100, "50% off today"),
+            msg(
+                "sms:2",
+                11,
+                Direction::In,
+                200,
+                "don't forget: gate code 4410",
+            ),
+            msg("sms:3", 11, Direction::In, 300, "this and that or not"),
+        ])
+        .expect("upsert");
+        assert_eq!(found(&s, "50%"), ["sms:1"]);
+        assert_eq!(found(&s, "don't"), ["sms:2"]);
+        assert_eq!(found(&s, "code: 44"), ["sms:2"]);
+        assert_eq!(found(&s, "AND"), ["sms:3"]);
+        assert_eq!(found(&s, "NOT"), ["sms:3"]);
+        assert_eq!(found(&s, "that OR"), ["sms:3"]);
+        for typed in [
+            "\"",
+            "\"gate",
+            "gate\"code",
+            "*",
+            "gate*",
+            "(",
+            ")",
+            "-",
+            "-gate",
+            "^gate",
+            "+",
+            "%",
+            "_",
+            "body:gate",
+            "NEAR(gate code)",
+            "{gate}",
+            "gate AND",
+            "\\",
+            "'",
+            "",
+            "   ",
+            "\u{1f600}",
+        ] {
+            assert!(
+                s.search(typed, 10).is_ok(),
+                "typing {typed:?} must not fail"
+            );
+        }
+        assert_eq!(found(&s, "\"gate"), ["sms:2"]);
+        assert_eq!(found(&s, "% - *"), [] as [&str; 0], "nothing to look for");
+    }
+
+    #[test]
+    fn search_follows_every_change_to_the_messages() {
+        let mut s = store();
+        let mut picture = msg("mms:1", 11, Direction::In, 50, "");
+        picture.body = None;
+        s.upsert_messages(&[
+            picture,
+            msg("sms:7", 11, Direction::In, 100, "see you at noon"),
+        ])
+        .expect("upsert");
+        assert_eq!(found(&s, "noon"), ["sms:7"]);
+
+        // The phone is authoritative: the same id can come back with other text.
+        s.upsert_messages(&[msg("sms:7", 11, Direction::In, 100, "see you at midnight")])
+            .expect("changed");
+        assert_eq!(found(&s, "noon"), [] as [&str; 0]);
+        assert_eq!(found(&s, "midnight"), ["sms:7"]);
+        s.upsert_messages(&[msg("sms:7", 11, Direction::In, 100, "see you at midnight")])
+            .expect("unchanged");
+        s.set_message_status("sms:7", MessageStatus::Sent)
+            .expect("status");
+        assert_eq!(found(&s, "midnight"), ["sms:7"]);
+        assert_index_is_sound(&s);
+
+        s.clear_phone_data().expect("unpair");
+        assert_eq!(found(&s, "midnight"), [] as [&str; 0]);
+        assert_index_is_sound(&s);
+        s.upsert_messages(&[msg(
+            "sms:1",
+            11,
+            Direction::In,
+            100,
+            "a new phone at midnight",
+        )])
+        .expect("new phone");
+        assert_eq!(found(&s, "midnight"), ["sms:1"]);
+        assert_index_is_sound(&s);
+    }
+
+    /// A store written before search was indexed (schema version 1) gains the
+    /// index, with the messages it already holds, the first time it is opened.
+    #[test]
+    fn a_store_from_before_the_search_index_is_migrated_with_its_messages() {
+        let conn = Connection::open_in_memory().expect("open");
+        conn.execute_batch(SCHEMA_V1).expect("version 1 schema");
+        conn.execute_batch(
+            "INSERT INTO messages (id, thread_id, kind, direction, address, participants, body, parts, date, read)
+             VALUES ('sms:1', 11, 'sms', 'in', '+15855550101', '[\"+15855550101\"]', 'old message about pizza', '[]', 100, 1),
+                    ('mms:2', 11, 'mms', 'in', '+15855550101', '[\"+15855550101\"]', NULL, '[]', 200, 1);
+             INSERT INTO threads (id, participants, snippet, date) VALUES (11, '[\"+15855550101\"]', 'x', 200);
+             INSERT INTO meta (key, value) VALUES ('pref:popups', '1'), ('sync_cursor', 's1.m2');
+             PRAGMA user_version = 1;",
+        )
+        .expect("version 1 contents");
+
+        let mut s = Store::init(conn).expect("migrates");
+        let version: i64 = s
+            .conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .expect("version");
+        assert_eq!(version, 2);
+        assert_eq!(found(&s, "pizza"), ["sms:1"]);
+        assert_eq!(s.message_count().expect("count"), 2, "nothing was lost");
+        assert_eq!(
+            s.meta("sync_cursor").expect("meta").as_deref(),
+            Some("s1.m2")
+        );
+        assert!(s.pref(PREF_POPUPS).expect("pref"));
+        s.upsert_messages(&[msg("sms:3", 11, Direction::In, 300, "more pizza")])
+            .expect("upsert");
+        assert_eq!(found(&s, "pizza"), ["sms:3", "sms:1"]);
+        assert_index_is_sound(&s);
+    }
+
+    /// Opening an up-to-date store runs no migration again.
+    #[test]
+    fn opening_a_current_store_again_changes_nothing() {
+        let dir =
+            std::env::temp_dir().join(format!("sms-bridge-store-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("reopen.db");
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut s = Store::open(&path).expect("create");
+            s.upsert_messages(&[msg("sms:1", 11, Direction::In, 100, "kept across restarts")])
+                .expect("upsert");
+        }
+        let s = Store::open(&path).expect("reopen");
+        assert_eq!(found(&s, "restarts"), ["sms:1"]);
+        assert_index_is_sound(&s);
+        drop(s);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
