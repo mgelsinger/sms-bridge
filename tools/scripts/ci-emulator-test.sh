@@ -23,4 +23,19 @@ status=${PIPESTATUS[0]}
 kill "$injector" 2>/dev/null || true
 
 adb logcat -d -s SmsBridgeTest:I SmsBridge:I AndroidRuntime:E TestRunner:E > ../emulator-logcat.txt 2>&1 || true
+
+# What the system's message store holds, seen as root, without message text.
+{
+  echo "== build"; adb shell getprop ro.build.fingerprint; adb shell getprop ro.build.version.sdk
+  echo "== default SMS app"; adb shell cmd role get-role-holders android.app.role.SMS
+  adb root; sleep 5; adb wait-for-device
+  DB=/data/user_de/0/com.android.providers.telephony/databases/mmssms.db
+  echo "== sms rows"; adb shell "sqlite3 $DB 'select _id, thread_id, type, address, creator, sub_id from sms order by _id desc limit 25'"
+  echo "== sms columns"; adb shell "sqlite3 $DB 'pragma table_info(sms)'"
+  echo "== threads"; adb shell "sqlite3 $DB 'select * from threads'"
+  echo "== thread columns"; adb shell "sqlite3 $DB 'pragma table_info(threads)'"
+  echo "== pdu columns"; adb shell "sqlite3 $DB 'pragma table_info(pdu)'"
+  echo "== canonical addresses"; adb shell "sqlite3 $DB 'select * from canonical_addresses'"
+  echo "== appops"; adb shell appops get io.github.mgelsinger.smsbridge 2>&1 | head -20
+} > ../emulator-provider.txt 2>&1 || true
 exit "$status"
