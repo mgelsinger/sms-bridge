@@ -37,7 +37,7 @@ jobs:
           if-no-files-found: error
 
   emulator:
-    name: Emulator end-to-end (API ${{ matrix.api }})
+    name: Emulator end-to-end (API ${{ matrix.api }} ${{ matrix.target }} ${{ matrix.note }})
     runs-on: ubuntu-latest
     timeout-minutes: 50
     strategy:
@@ -46,7 +46,12 @@ jobs:
         # 34 is the baseline the tests were written on. 37.0 is Android 17, which keeps
         # new threads out of the system's thread index for apps that are not the default
         # SMS app (docs/DECISIONS.md) and is what the phone in daily use runs.
-        api: ['34', '37.0']
+        include:
+          - { api: '34', target: google_apis, profile: '', ram: '', cores: 2, extra: '', note: '' }
+          - { api: '37.0', target: google_apis, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'big' }
+          - { api: '37.0', target: google_atd, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'big' }
+          - { api: '37.0', target: default, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'big' }
+          - { api: '37.0', target: google_apis, profile: '', ram: '', cores: 2, extra: '-show-kernel', note: 'kernel-log' }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -65,10 +70,14 @@ jobs:
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
-          target: google_apis
+          target: ${{ matrix.target }}
           arch: x86_64
+          profile: ${{ matrix.profile }}
+          ram-size: ${{ matrix.ram }}
+          cores: ${{ matrix.cores }}
+          emulator-boot-timeout: 900
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none ${{ matrix.extra }}
           script: bash tools/scripts/ci-emulator-test.sh
       - if: always()
         run: node tools/ci/junit-summary.mjs android/app/build/outputs/androidTest-results "emulator API ${{ matrix.api }}"
@@ -80,7 +89,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: emulator-logs-api-${{ matrix.api }}
+          name: emulator-logs-api-${{ matrix.api }}-${{ matrix.target }}-${{ matrix.note }}
           path: |
             emulator.log
             emulator-logcat.txt
