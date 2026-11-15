@@ -48,7 +48,8 @@ jobs:
         # SMS app (docs/DECISIONS.md) and is what the phone in daily use runs.
         include:
           - { api: '34', target: google_apis, profile: '', ram: '', cores: 2, extra: '', note: '' }
-          - { api: '37.0', target: default, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'big' }
+          - { api: '37.0', target: google_apis, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'settle' }
+          - { api: '37.2', target: google_apis_ps16k, profile: pixel_6, ram: 4096M, cores: 4, extra: '', note: 'settle' }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -76,7 +77,7 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none ${{ matrix.extra }}
-          script: bash tools/scripts/ci-emulator-test.sh
+          script: EMULATOR_SETTLE_S=${{ matrix.note == 'settle' && '90' || '0' }} bash tools/scripts/ci-emulator-test.sh
       - if: always()
         run: node tools/ci/junit-summary.mjs android/app/build/outputs/androidTest-results "emulator API ${{ matrix.api }}"
       - if: failure()

@@ -8,6 +8,8 @@ adb wait-for-device
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
+# A new system image can still be starting its own apps when boot is reported.
+sleep "${EMULATOR_SETTLE_S:-0}"
 
 # A text every 5 seconds for up to 20 minutes, so one lands after the test is listening.
 (
