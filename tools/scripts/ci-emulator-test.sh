@@ -30,7 +30,7 @@ adb logcat -d -s SmsBridgeTest:I SmsBridge:I AndroidRuntime:E TestRunner:E > ../
   echo "== default SMS app"; adb shell cmd role get-role-holders android.app.role.SMS
   adb root; sleep 5; adb wait-for-device
   echo "== databases"; adb shell "find /data -name 'mmssms.db' 2>/dev/null"
-  for DB in $(adb shell "find /data -name 'mmssms.db' 2>/dev/null" | tr -d ''); do
+  for DB in $(adb shell "find /data -name 'mmssms.db' 2>/dev/null" | tr -d '\r'); do
     echo "== $DB"
     echo "-- sms by type, creator, restriction"; adb shell "sqlite3 $DB 'select type, creator, read_restriction, count(*) from sms group by 1, 2, 3'"
     echo "-- newest sms rows"; adb shell "sqlite3 $DB 'select _id, thread_id, type, address, creator, read_restriction from sms order by _id desc limit 12'"
