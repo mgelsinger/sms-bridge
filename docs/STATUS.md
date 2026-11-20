@@ -10,9 +10,10 @@ Last updated: 2026-11-20.
   hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); results and
   what was found on the way are in [PHASE-2.md](PHASE-2.md) and
   [PHASE-3.md](PHASE-3.md).
-- Running on both the phone and the PC since 2026-11-11: dev build
-  dev-5e591cf, paired, and in ordinary daily use. Texts arrive overnight with
-  the taskbar dot; texts sent from the PC go out once.
+- Running on both the phone and the PC: dev build dev-969c085 since
+  2026-11-20 (dev-5e591cf from 2026-11-11 before that), paired, and in
+  ordinary daily use. Texts arrive overnight with the taskbar dot; texts sent
+  from the PC go out once.
 - Mickey will not run the Wi-Fi-drop-mid-send check on his real phone. It is
   accepted on emulator evidence (DECISIONS.md, "Phase 3 gate"). Do not ask
   again.
@@ -23,12 +24,16 @@ Last updated: 2026-11-20.
   history pages, "Start with Windows" (off by default, in the status
   menu), and FTS5 search. Not started: signed APK and installer, and the
   open items below.
-- The phase 4 work is not on Mickey's devices yet. It is in the newest
-  `dev-` prerelease on GitHub (dev-b5629b9 or later; later ones differ only
-  in docs). Installing it restarts the week only in the sense that the PC
-  build upgrades its local store on first start; pairing is kept on both
-  sides. The phone needs the new APK for the faster history pages, the PC
-  the new installer for "Start with Windows" and the new search.
+- The phase 4 work went onto both devices on 2026-11-20 (APK with
+  `adb install -r`, installer with `/S`, the PC store backed up first to
+  `%LOCALAPPDATA%\io.github.mgelsinger.smsbridge\backup-before-969c085`).
+  Permissions and pairing were kept on both sides; the phone restarted the
+  bridge by itself after the update, and the new PC build caught up in
+  0.5 s. Checked that day: the PC store upgraded to FTS5 in place and
+  search answers in under 5 ms with words in any order and word beginnings;
+  "Start with Windows" is off by default and writes no Run entry; a page of
+  91 MMS from an old conversation took 513 ms on the phone (774 ms on the
+  PC), where the old per-MMS lookups would have cost about 180 queries.
 - Phone calls were added to the plan on 2026-11-20 at Mickey's request, as
   phases 6 (calls over the bridge, voice on the phone) and 7 (voice on the PC
   over Bluetooth hands-free). Plan only, no code. See PLAN.md, "Calls", and
@@ -96,12 +101,10 @@ Last updated: 2026-11-20.
   find out what qualifies, since this app is one in spirit. Source:
   https://developer.android.com/about/versions/17/behavior-changes-all and
   https://developer.android.com/about/versions/17/behavior-changes-17
-- History fetches: fixed in code on 2026-11-14, not yet measured on the real
-  phone. A page now costs 3 provider queries, plus one per MMS only in group
-  threads, and the PC allows 90 seconds for a page of messages (DECISIONS.md,
-  "Phase 4"). To confirm on the phone: open an old picture-heavy conversation
-  on the PC and scroll up; the phone's log shows how long each
-  `/threads/N/messages` took.
+- History fetches: measured on the real phone on 2026-11-20 for a 1:1
+  conversation (91 MMS in 513 ms). Group threads still cost one query per
+  MMS and were not measured: the only group thread the phone lists has two
+  messages.
 - CI's emulator is still API 34 only. An Android 17 job was tried on
   2026-11-14 and not added (PR #10, closed): Android 17 images exist and
   boot, but none behaves like the phone, so the job would test the image.
