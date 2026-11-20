@@ -310,6 +310,44 @@ async fn mms_part(state: Shared<'_>, part_id: u64) -> Result<tauri::ipc::Respons
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+/// Saves an MMS attachment into the user's Downloads folder, never over an existing
+/// file, and returns the path it was saved to.
+#[tauri::command]
+async fn save_mms_part(
+    app: tauri::AppHandle,
+    state: Shared<'_>,
+    part_id: u64,
+    name: Option<String>,
+) -> Result<String, String> {
+    let client = state.client().ok_or("not paired")?;
+    let (content_type, bytes) = client.mms_part(part_id).await.map_err(err)?;
+    let dir = app.path().download_dir().map_err(err)?;
+    let file = sms_bridge_core::attachments::file_name(name.as_deref(), &content_type, part_id);
+    let path = sms_bridge_core::attachments::unique_path(&dir, &file, |p| p.exists());
+    // create_new: if another save took the name in the meantime, fail instead of overwriting.
+    use std::io::Write as _;
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map_err(err)?;
+    f.write_all(&bytes).map_err(err)?;
+    Ok(path.display().to_string())
+}
+
+/// Opens Explorer with a saved file selected.
+#[tauri::command]
+fn show_in_folder(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err("That file is no longer there.".into());
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", p.display()))
+            .spawn()
+            .map_err(err)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn computer_name() -> String {
     std::env::var("COMPUTERNAME")
@@ -402,6 +440,8 @@ fn main() {
             set_open_thread,
             reconnect,
             mms_part,
+            save_mms_part,
+            show_in_folder,
             computer_name,
             calls,
             missed_calls,
