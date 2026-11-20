@@ -221,8 +221,20 @@ class EmulatorEndToEndTest {
         // Replaying the same client_id returns the remembered result instead of sending again.
         frames.clear()
         ws.send("""{"protocol_version":1,"type":"send","client_id":"$clientId","to":["15555215554"],"body":"$body"}""")
-        val replay = frames.poll(10, TimeUnit.SECONDS)
-        assertTrue("replay answers with a result: $replay", replay is SendResultFrame && replay.clientId == clientId && replay.status != SendStatus.QUEUED)
+        // Other frames can arrive first: the loopback inbound copy, or a late text from an
+        // earlier test (seen in CI on 2026-11-20). Wait for this client_id's answer itself.
+        val skipped = mutableListOf<WsFrame>()
+        var replay: SendResultFrame? = null
+        val replayDeadline = System.currentTimeMillis() + 10_000
+        while (replay == null && System.currentTimeMillis() < replayDeadline) {
+            when (val f = frames.poll(1, TimeUnit.SECONDS)) {
+                null -> {}
+                is SendResultFrame -> if (f.clientId == clientId) replay = f else skipped += f
+                else -> skipped += f
+            }
+        }
+        assertTrue("replay answers with a result: $replay, after $skipped", replay != null && replay.status != SendStatus.QUEUED)
+        frames.addAll(skipped)
         Thread.sleep(5_000)
         assertTrue("no second copy was sent", frames.none { it is MessageFrame && it.message.body == body && it.message.direction == Direction.OUT })
         ws.close(1000, null)
