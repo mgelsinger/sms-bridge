@@ -1,0 +1,152 @@
+.calls {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  height: 100%;
+  min-height: 0;
+}
+@media (max-width: 760px) {
+  .calls {
+    grid-template-columns: 1fr 220px;
+  }
+}
+.history {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+.title {
+  margin: 0;
+  padding: 14px 16px 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.notice {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.empty {
+  padding: 16px;
+  color: var(--muted);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+.entry {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+.entry:hover:enabled {
+  background: var(--hover);
+}
+.entry:disabled {
+  opacity: 1;
+}
+.who {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.missed {
+  color: var(--danger);
+}
+.detail {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.time {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.callBack {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  padding: 4px 12px;
+}
+.callBack:hover:enabled {
+  background: var(--hover);
+}
+.pad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.number {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.keys button {
+  padding: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  font-size: 16px;
+}
+.keys button:hover {
+  background: var(--hover);
+}
+.call {
+  padding: 10px 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--ok);
+  color: #ffffff;
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) {
+  .call {
+    color: #000000;
+  }
+}
+.status {
+  margin: 0;
+  min-height: 1.4em;
+  color: var(--danger);
+}
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}

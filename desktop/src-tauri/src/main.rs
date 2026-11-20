@@ -8,10 +8,12 @@ use app::{AppState, Paired};
 use serde::Serialize;
 use sms_bridge_core::discovery::{self, DiscoveredPhone};
 use sms_bridge_core::net::{probe_fingerprint, NetError, PhoneAddress, PhoneClient};
-use sms_bridge_core::protocol::PROTOCOL_VERSION;
+use sms_bridge_core::protocol::{CallAbilities, CallAction, PROTOCOL_VERSION};
 use sms_bridge_core::startup;
-use sms_bridge_core::store::{MessageView, ThreadView, PREF_AUTOSTART, PREF_POPUPS};
-use sms_bridge_core::sync::{self, Command, ConnState};
+use sms_bridge_core::store::{
+    CallView, MessageView, ThreadView, PREF_AUTOSTART, PREF_CALL_POPUPS_OFF, PREF_POPUPS,
+};
+use sms_bridge_core::sync::{self, Command, ConnState, Line};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
@@ -189,6 +191,87 @@ fn send(
     })
 }
 
+/// Call history, newest first.
+#[tauri::command]
+fn calls(state: Shared<'_>, before: Option<u64>) -> Result<Vec<CallView>, String> {
+    state.db(|s| s.calls(before, 200)).map_err(err)
+}
+
+#[tauri::command]
+fn missed_calls(state: Shared<'_>) -> Result<u32, String> {
+    state.db(|s| s.missed_calls_unseen()).map_err(err)
+}
+
+/// The user is looking at the call history: missed calls stop counting.
+#[tauri::command]
+fn mark_calls_seen(state: Shared<'_>) -> Result<(), String> {
+    state.db(|s| s.mark_calls_seen()).map_err(err)?;
+    state.emit_calls_changed();
+    Ok(())
+}
+
+/// What the phone's line is doing right now.
+#[tauri::command]
+fn line(state: Shared<'_>) -> Line {
+    state.line()
+}
+
+/// What the phone can do with calls. `None` when its app does not know about
+/// calls, or cannot be asked right now.
+#[tauri::command]
+async fn call_abilities(state: Shared<'_>) -> Result<Option<CallAbilities>, String> {
+    let Some(client) = state.client() else {
+        return Ok(None);
+    };
+    Ok(client.status().await.ok().and_then(|s| s.status.calls))
+}
+
+/// Asks the phone to place a call. Only ever called because the user clicked
+/// Call or pressed Enter in the dial pad. Returns the request's id; what became
+/// of it arrives as a `call-result` event, and it is never sent a second time.
+#[tauri::command]
+fn dial(state: Shared<'_>, to: String) -> Result<String, String> {
+    let to = to.trim().to_owned();
+    if to.is_empty() || to.chars().count() > 64 {
+        return Err("Enter a number to call.".into());
+    }
+    let client_id = sync::new_client_id();
+    state.command(Command::Dial {
+        client_id: client_id.clone(),
+        to,
+    })?;
+    Ok(client_id)
+}
+
+/// Answers the ringing call, or ends (declines or hangs up) the current one.
+#[tauri::command]
+fn call_action(state: Shared<'_>, action: String) -> Result<String, String> {
+    let action = match action.as_str() {
+        "answer" => CallAction::Answer,
+        "end" => CallAction::End,
+        _ => return Err("unknown call action".into()),
+    };
+    let client_id = sync::new_client_id();
+    state.command(Command::CallAction {
+        client_id: client_id.clone(),
+        action,
+    })?;
+    Ok(client_id)
+}
+
+/// Whether a ringing or missed call raises a pop-up. On unless switched off.
+#[tauri::command]
+fn call_popups_enabled(state: Shared<'_>) -> Result<bool, String> {
+    Ok(!state.db(|s| s.pref(PREF_CALL_POPUPS_OFF)).map_err(err)?)
+}
+
+#[tauri::command]
+fn set_call_popups(state: Shared<'_>, enabled: bool) -> Result<(), String> {
+    state
+        .db(|s| s.set_pref(PREF_CALL_POPUPS_OFF, !enabled))
+        .map_err(err)
+}
+
 #[tauri::command]
 fn retry(state: Shared<'_>, client_id: String) -> Result<(), String> {
     state.command(Command::Retry { client_id })
@@ -320,6 +403,15 @@ fn main() {
             reconnect,
             mms_part,
             computer_name,
+            calls,
+            missed_calls,
+            mark_calls_seen,
+            line,
+            call_abilities,
+            dial,
+            call_action,
+            call_popups_enabled,
+            set_call_popups,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

@@ -4,9 +4,9 @@ use serde::Serialize;
 use sms_bridge_core::attention;
 use sms_bridge_core::discovery;
 use sms_bridge_core::net::{probe_fingerprint, PhoneAddress, PhoneClient};
-use sms_bridge_core::protocol::{DeviceStatus, Message};
-use sms_bridge_core::store::{Store, PREF_POPUPS};
-use sms_bridge_core::sync::{self, Command, ConnState, Events};
+use sms_bridge_core::protocol::{Call, DeviceStatus, LineState, Message};
+use sms_bridge_core::store::{Store, PREF_CALL_POPUPS_OFF, PREF_POPUPS};
+use sms_bridge_core::sync::{self, Command, ConnState, Events, Line};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
@@ -37,8 +37,17 @@ pub struct Inner {
     client: Option<PhoneClient>,
     open_thread: Option<u64>,
     last_rediscovery: Option<Instant>,
-    /// The unread count the taskbar dot and tray tooltip currently reflect.
-    shown_unread: Option<u32>,
+    /// The unread texts and missed calls the taskbar dot and tray tooltip currently reflect.
+    shown_unread: Option<(u32, u32)>,
+    /// What the phone's line is doing. `None` is idle, or not known.
+    line: Option<Line>,
+}
+
+/// What the window is told about a dial or a call action.
+#[derive(Debug, Clone, Serialize)]
+struct CallResult<'a> {
+    client_id: &'a str,
+    error: Option<&'a str>,
 }
 
 pub struct AppState {
@@ -102,6 +111,16 @@ impl AppState {
         }
     }
 
+    /// The phone's line as last reported, idle when there is no connection.
+    pub fn line(&self) -> Line {
+        self.lock().line.clone().unwrap_or_else(Line::idle)
+    }
+
+    pub fn emit_calls_changed(&self) {
+        let _ = self.handle.emit("calls-changed", ());
+        self.refresh_attention();
+    }
+
     pub fn set_open_thread(&self, thread_id: Option<u64>) {
         self.lock().open_thread = thread_id;
     }
@@ -111,18 +130,21 @@ impl AppState {
         self.refresh_attention();
     }
 
-    /// Puts a dot on the taskbar icon while anything is unread, and the count in
-    /// the tray tooltip for when the window is hidden. This is how new texts are
-    /// announced by default; pop-ups are opt-in.
+    /// Puts a dot on the taskbar icon while a text is unread or a missed call
+    /// has not been looked at, and the counts in the tray tooltip for when the
+    /// window is hidden. This is how new texts are announced by default;
+    /// pop-ups for texts are opt-in.
     pub fn refresh_attention(&self) {
-        let unread = self.db(|s| s.unread_total()).unwrap_or(0);
+        let texts = self.db(|s| s.unread_total()).unwrap_or(0);
+        let missed = self.db(|s| s.missed_calls_unseen()).unwrap_or(0);
         {
             let mut inner = self.lock();
-            if inner.shown_unread == Some(unread) {
+            if inner.shown_unread == Some((texts, missed)) {
                 return;
             }
-            inner.shown_unread = Some(unread);
+            inner.shown_unread = Some((texts, missed));
         }
+        let unread = texts + missed;
         if let Some(window) = self.handle.get_webview_window("main") {
             #[cfg(target_os = "windows")]
             {
@@ -134,7 +156,7 @@ impl AppState {
             let _ = window.set_badge_count((unread > 0).then_some(i64::from(unread)));
         }
         if let Some(tray) = self.handle.tray_by_id("main") {
-            let _ = tray.set_tooltip(Some(attention::tray_tooltip(unread)));
+            let _ = tray.set_tooltip(Some(attention::tray_tooltip(texts, missed)));
         }
     }
 
@@ -187,13 +209,38 @@ impl AppState {
             inner.client = None;
             inner.paired = None;
             inner.conn = None;
+            inner.line = None;
         }
         let _ = token_entry().and_then(|e| e.delete_credential());
         self.db(|s| s.clear_phone_data())
             .map_err(|e| e.to_string())?;
         let _ = self.handle.emit("conn-state", Option::<ConnState>::None);
+        let _ = self.handle.emit("line", Line::idle());
         self.emit_threads_changed();
+        self.emit_calls_changed();
         Ok(())
+    }
+
+    /// A pop-up about a call, unless the user switched those off or is looking
+    /// at the window. The body names the caller and nothing else.
+    fn call_popup(&self, title: &str, number: Option<&str>) {
+        let off = self.db(|s| s.pref(PREF_CALL_POPUPS_OFF)).unwrap_or(false);
+        let focused = self
+            .handle
+            .get_webview_window("main")
+            .and_then(|w| w.is_focused().ok())
+            .unwrap_or(false);
+        if !attention::wants_call_popup(off, focused) {
+            return;
+        }
+        let name = number.and_then(|n| self.db(|s| s.display_name(n)).ok().flatten());
+        let _ = self
+            .handle
+            .notification()
+            .builder()
+            .title(title)
+            .body(attention::caller_label(name.as_deref(), number))
+            .show();
     }
 
     fn save_address(&self, p: &Paired) -> rusqlite_result::Result<()> {
@@ -365,6 +412,46 @@ impl Events for Bridge {
     fn status(&self, status: &DeviceStatus) {
         if let Some(app) = self.state.upgrade() {
             let _ = app.handle.emit("device-status", status.clone());
+        }
+    }
+
+    fn calls_changed(&self) {
+        if let Some(app) = self.state.upgrade() {
+            app.emit_calls_changed();
+        }
+    }
+
+    fn line(&self, line: &Line) {
+        let Some(app) = self.state.upgrade() else {
+            return;
+        };
+        let was_ringing = {
+            let mut inner = app.lock();
+            let was = inner
+                .line
+                .as_ref()
+                .is_some_and(|l| l.state == LineState::Ringing);
+            inner.line = (line.state != LineState::Idle).then(|| line.clone());
+            was
+        };
+        let _ = app.handle.emit("line", line.clone());
+        // One pop-up per ring: the number can arrive in a second report of the same ring.
+        if line.state == LineState::Ringing && !was_ringing {
+            app.call_popup("Incoming call", line.number.as_deref());
+        }
+    }
+
+    fn missed_call(&self, call: &Call) {
+        if let Some(app) = self.state.upgrade() {
+            app.call_popup("Missed call", call.number.as_deref());
+        }
+    }
+
+    fn call_result(&self, client_id: &str, error: Option<&str>) {
+        if let Some(app) = self.state.upgrade() {
+            let _ = app
+                .handle
+                .emit("call-result", CallResult { client_id, error });
         }
     }
 }

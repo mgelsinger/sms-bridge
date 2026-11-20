@@ -74,6 +74,44 @@ export interface DeviceStatus {
   is_default_sms_app: boolean;
   uptime_s: number;
   paired_clients: number;
+  /** Absent when the phone's app does not know about calls. */
+  calls?: CallAbilities;
+}
+
+export type CallKind = "in" | "out" | "missed" | "rejected" | "blocked" | "voicemail";
+
+/** One entry of the phone's call history. */
+export interface CallView {
+  id: string;
+  /** Null when the other party withheld the number. */
+  number: string | null;
+  name: string | null;
+  kind: CallKind;
+  date: number;
+  duration_s: number;
+  seen: boolean;
+}
+
+/** What the phone's line is doing. It describes the line, not one call. */
+export interface Line {
+  state: "idle" | "ringing" | "active";
+  direction: "in" | "out" | null;
+  number: string | null;
+  since: number;
+}
+
+/** What the phone can do with calls given the permissions it holds. */
+export interface CallAbilities {
+  history: boolean;
+  dial: boolean;
+  answer: boolean;
+  end: boolean;
+}
+
+/** What became of a dial or a call action. The error is null when the phone took it. */
+export interface CallResult {
+  client_id: string;
+  error: string | null;
 }
 
 export const api = {
@@ -105,6 +143,16 @@ export const api = {
   setAutostart: (enabled: boolean) => invoke<void>("set_autostart", { enabled }),
   mmsPart: (partId: number) => invoke<ArrayBuffer>("mms_part", { partId }),
   computerName: () => invoke<string>("computer_name"),
+  calls: (before?: number) => invoke<CallView[]>("calls", { before: before ?? null }),
+  missedCalls: () => invoke<number>("missed_calls"),
+  markCallsSeen: () => invoke<void>("mark_calls_seen"),
+  line: () => invoke<Line>("line"),
+  callAbilities: () => invoke<CallAbilities | null>("call_abilities"),
+  /** Asks the phone to place a call. Resolves to the request id; the outcome is a callResult event. */
+  dial: (to: string) => invoke<string>("dial", { to }),
+  callAction: (action: "answer" | "end") => invoke<string>("call_action", { action }),
+  callPopupsEnabled: () => invoke<boolean>("call_popups_enabled"),
+  setCallPopups: (enabled: boolean) => invoke<void>("set_call_popups", { enabled }),
 };
 
 export const events = {
@@ -112,6 +160,9 @@ export const events = {
   threadsChanged: (cb: () => void): Promise<UnlistenFn> => listen("threads-changed", () => cb()),
   threadChanged: (cb: (id: number) => void): Promise<UnlistenFn> => listen<number>("thread-changed", (e) => cb(e.payload)),
   deviceStatus: (cb: (s: DeviceStatus) => void): Promise<UnlistenFn> => listen<DeviceStatus>("device-status", (e) => cb(e.payload)),
+  callsChanged: (cb: () => void): Promise<UnlistenFn> => listen("calls-changed", () => cb()),
+  line: (cb: (l: Line) => void): Promise<UnlistenFn> => listen<Line>("line", (e) => cb(e.payload)),
+  callResult: (cb: (r: CallResult) => void): Promise<UnlistenFn> => listen<CallResult>("call-result", (e) => cb(e.payload)),
 };
 
 /** Turns Tauri command rejections (strings) and errors into one message. */

@@ -35,6 +35,11 @@ const INITIAL_MESSAGES_PER_THREAD: u32 = 100;
 pub const META_SYNC_CURSOR: &str = "sync_cursor";
 pub const META_CALLS_CURSOR: &str = "calls_cursor";
 
+/// A fresh id for a request to the phone, in the form the protocol asks for.
+pub fn new_client_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

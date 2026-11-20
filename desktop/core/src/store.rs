@@ -98,6 +98,10 @@ const SCHEMA_V3: &str = "
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
+/// Preference: no pop-up for a ringing or missed call. Call pop-ups are on
+/// unless this is set, the other way round from texts: a call cannot wait.
+pub const PREF_CALL_POPUPS_OFF: &str = "pref:call_popups_off";
+
 /// Preference: start with Windows, in the tray. Off unless set.
 pub const PREF_AUTOSTART: &str = "pref:autostart";
 

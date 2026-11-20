@@ -1,0 +1,63 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--selected);
+  border-bottom: 1px solid var(--line);
+}
+.ringing {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.headline {
+  font-weight: 600;
+}
+.who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.timer {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.error {
+  color: var(--danger);
+}
+.ringing .error {
+  color: inherit;
+  text-decoration: underline;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.actions button {
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 14px;
+  font-weight: 600;
+}
+.answer {
+  background: var(--ok);
+  color: #ffffff;
+}
+.end {
+  background: var(--danger);
+  color: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  .answer,
+  .end {
+    color: #000000;
+  }
+}
