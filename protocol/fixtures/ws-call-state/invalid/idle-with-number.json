@@ -1,0 +1,8 @@
+{
+  "protocol_version": 1,
+  "type": "call_state",
+  "state": "idle",
+  "direction": null,
+  "number": "+15855550123",
+  "since": 1762995660000
+}

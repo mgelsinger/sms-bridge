@@ -52,6 +52,9 @@
     "paired_clients": {
       "type": "integer",
       "minimum": 0
+    },
+    "calls": {
+      "$ref": "common.schema.json#/$defs/call_abilities"
     }
   },
   "required": [

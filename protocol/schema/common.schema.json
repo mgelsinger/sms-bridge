@@ -65,9 +65,61 @@
         "not_found",
         "unsupported_version",
         "not_default_sms_app",
+        "not_permitted",
         "send_failed",
         "internal"
       ]
+    },
+    "nullable_address": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "An address, or null when the other party withheld the number or the phone does not know it."
+    },
+    "call_id": {
+      "type": "string",
+      "pattern": "^call:[0-9]+$"
+    },
+    "call_kind": {
+      "enum": [
+        "in",
+        "out",
+        "missed",
+        "rejected",
+        "blocked",
+        "voicemail"
+      ],
+      "description": "in: answered inbound. out: placed, answered or not. missed: rang and was not answered. rejected: declined by the user. blocked: stopped by the phone before ringing. voicemail: went to voicemail."
+    },
+    "call_abilities": {
+      "type": "object",
+      "description": "What the phone can do with calls given the permissions it holds right now. Absent on a phone that does not know about calls.",
+      "properties": {
+        "history": {
+          "type": "boolean",
+          "description": "GET /calls and `call` frames work, and `call_state` carries numbers."
+        },
+        "dial": {
+          "type": "boolean"
+        },
+        "answer": {
+          "type": "boolean"
+        },
+        "end": {
+          "type": "boolean",
+          "description": "Declining a ringing call and hanging up."
+        }
+      },
+      "required": [
+        "history",
+        "dial",
+        "answer",
+        "end"
+      ],
+      "additionalProperties": false
     }
   }
 }

@@ -1,0 +1,7 @@
+{
+  "protocol_version": 1,
+  "type": "call_result",
+  "client_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+  "status": "failed",
+  "error": "no call is ringing"
+}

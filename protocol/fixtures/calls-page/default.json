@@ -1,0 +1,35 @@
+{
+  "protocol_version": 1,
+  "calls": [
+    {
+      "id": "call:412",
+      "number": "+15855550123",
+      "kind": "in",
+      "date": 1762981200000,
+      "duration_s": 187
+    },
+    {
+      "id": "call:413",
+      "number": "+15855550177",
+      "kind": "out",
+      "date": 1762984800000,
+      "duration_s": 42
+    },
+    {
+      "id": "call:414",
+      "number": "+15855550123",
+      "kind": "missed",
+      "date": 1762988400000,
+      "duration_s": 0
+    },
+    {
+      "id": "call:415",
+      "number": null,
+      "kind": "rejected",
+      "date": 1762992000000,
+      "duration_s": 0
+    }
+  ],
+  "next_cursor": "c415",
+  "has_more": false
+}

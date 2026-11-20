@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-call-state.schema.json",
+  "title": "WebSocket call state (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "call_state"
+    },
+    "state": {
+      "enum": [
+        "idle",
+        "ringing",
+        "active"
+      ],
+      "description": "idle: no call. ringing: an inbound call is ringing. active: off the hook, which for an outbound call starts when dialing starts."
+    },
+    "direction": {
+      "enum": [
+        "in",
+        "out",
+        null
+      ]
+    },
+    "number": {
+      "$ref": "common.schema.json#/$defs/nullable_address"
+    },
+    "since": {
+      "$ref": "common.schema.json#/$defs/epoch_ms",
+      "description": "When the phone entered this state."
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "state",
+    "direction",
+    "number",
+    "since"
+  ],
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "state": {
+        "const": "idle"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "direction": {
+        "const": null
+      },
+      "number": {
+        "const": null
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "direction": {
+        "enum": [
+          "in",
+          "out"
+        ]
+      }
+    }
+  }
+}

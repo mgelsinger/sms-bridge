@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-call.schema.json",
+  "title": "WebSocket call event (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "call"
+    },
+    "call": {
+      "$ref": "call.schema.json"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "call"
+  ],
+  "additionalProperties": false
+}

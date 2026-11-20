@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/call.schema.json",
+  "title": "One entry of the phone's call history",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "common.schema.json#/$defs/call_id"
+    },
+    "number": {
+      "$ref": "common.schema.json#/$defs/nullable_address"
+    },
+    "kind": {
+      "$ref": "common.schema.json#/$defs/call_kind"
+    },
+    "date": {
+      "$ref": "common.schema.json#/$defs/epoch_ms",
+      "description": "When the call started ringing or dialing."
+    },
+    "duration_s": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Seconds talked. 0 for a call that was never answered."
+    }
+  },
+  "required": [
+    "id",
+    "number",
+    "kind",
+    "date",
+    "duration_s"
+  ],
+  "additionalProperties": false
+}

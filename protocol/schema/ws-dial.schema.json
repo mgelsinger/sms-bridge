@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-dial.schema.json",
+  "title": "WebSocket dial (client to phone)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "dial"
+    },
+    "client_id": {
+      "$ref": "common.schema.json#/$defs/client_id"
+    },
+    "to": {
+      "$ref": "common.schema.json#/$defs/address"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "client_id",
+    "to"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,8 @@
+{
+  "protocol_version": 1,
+  "type": "call_state",
+  "state": "ringing",
+  "direction": "in",
+  "number": "+15855550123",
+  "since": 1762995600000
+}

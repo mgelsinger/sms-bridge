@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-call-result.schema.json",
+  "title": "WebSocket result of a dial or call action (phone to client)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "call_result"
+    },
+    "client_id": {
+      "$ref": "common.schema.json#/$defs/client_id"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "failed"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "client_id",
+    "status",
+    "error"
+  ],
+  "additionalProperties": false
+}

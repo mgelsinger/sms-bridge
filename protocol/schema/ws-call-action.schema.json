@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sms-bridge.invalid/schema/ws-call-action.schema.json",
+  "title": "WebSocket call action (client to phone)",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocol_version"
+    },
+    "type": {
+      "const": "call_action"
+    },
+    "client_id": {
+      "$ref": "common.schema.json#/$defs/client_id"
+    },
+    "action": {
+      "enum": [
+        "answer",
+        "end"
+      ],
+      "description": "answer: pick up the ringing call. end: decline the ringing call, or hang up the active one."
+    }
+  },
+  "required": [
+    "protocol_version",
+    "type",
+    "client_id",
+    "action"
+  ],
+  "additionalProperties": false
+}

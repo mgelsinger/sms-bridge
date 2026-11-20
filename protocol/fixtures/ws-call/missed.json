@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "type": "call",
+  "call": {
+    "id": "call:416",
+    "number": "+15855550123",
+    "kind": "missed",
+    "date": 1762995600000,
+    "duration_s": 0
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "protocol_version": 1,
+  "error": {
+    "code": "not_permitted",
+    "message": "the phone app may not read the call history"
+  }
+}
