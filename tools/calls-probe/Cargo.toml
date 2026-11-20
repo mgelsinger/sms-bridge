@@ -1,0 +1,17 @@
+[package]
+name = "calls-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Desk experiment: can an unpackaged app use the phone's calls over Bluetooth hands-free?"
+
+# Stands alone on purpose: it is not part of the desktop app's workspace.
+[workspace]
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.62", features = [
+    "ApplicationModel_Calls",
+    "Devices_Enumeration",
+    "Foundation",
+    "Foundation_Collections",
+] }
