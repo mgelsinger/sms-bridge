@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, events, type ConnState, type DeviceStatus, type MessageView, type Paired, type ThreadView } from "../lib/api";
 import { cleanNumber, dayLabel, listTime, sameDay } from "../lib/format";
+import { threadMatches } from "../lib/search";
 import { Composer } from "./Composer";
 import { MmsImage } from "./MmsImage";
 import styles from "./Messenger.module.css";
@@ -40,7 +41,10 @@ export function Messenger({ paired, conn, onUnpaired }: { paired: Paired; conn: 
     return () => clearTimeout(t);
   }, [query]);
 
-  const visible = useMemo(() => threads, [threads]);
+  // While searching, the list shows the conversations the query names (by contact
+  // name or number) above the messages whose text matches it.
+  const searching = query.trim() !== "";
+  const visible = useMemo(() => (searching ? threads.filter((t) => threadMatches(t, query)) : threads), [threads, query, searching]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,15 +75,20 @@ export function Messenger({ paired, conn, onUnpaired }: { paired: Paired; conn: 
     <div className={styles.app}>
       <aside className={styles.sidebar}>
         <div className={styles.sideTop}>
-          <input ref={searchRef} className={styles.search} placeholder="Search (Ctrl+K)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search messages" />
+          <input ref={searchRef} className={styles.search} placeholder="Search (Ctrl+K)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search names, numbers, and messages" />
           <button className={styles.newBtn} onClick={() => setSelection({ kind: "new" })} title="New message (Ctrl+N)" aria-label="New message">
             +
           </button>
         </div>
-        {results ? (
-          <ul className={styles.threads}>
-            {results.length === 0 && <li className={styles.empty}>No messages match.</li>}
-            {results.map((m) => {
+        {searching ? (
+          <ul className={styles.threads} aria-label="Search results">
+            {visible.length > 0 && <li className={styles.sectionLabel}>Conversations</li>}
+            {visible.map((t) => (
+              <ThreadRow key={t.id} thread={t} selected={selection?.kind === "thread" && selection.id === t.id} onOpen={() => { setQuery(""); setSelection({ kind: "thread", id: t.id }); }} />
+            ))}
+            {results && results.length > 0 && <li className={styles.sectionLabel}>Messages</li>}
+            {results && results.length === 0 && visible.length === 0 && <li className={styles.empty}>Nothing matches.</li>}
+            {(results ?? []).map((m) => {
               const t = threads.find((x) => x.id === m.thread_id);
               return (
                 <li key={m.id}>
@@ -98,21 +107,7 @@ export function Messenger({ paired, conn, onUnpaired }: { paired: Paired; conn: 
           <ul className={styles.threads}>
             {visible.length === 0 && <li className={styles.empty}>{conn?.state === "syncing" ? "Syncing your messages…" : "No conversations yet."}</li>}
             {visible.map((t) => (
-              <li key={t.id}>
-                <button
-                  className={`${styles.thread} ${selection?.kind === "thread" && selection.id === t.id ? styles.selected : ""}`}
-                  onClick={() => setSelection({ kind: "thread", id: t.id })}
-                >
-                  <span className={styles.threadTop}>
-                    <span className={`${styles.name} ${t.unread > 0 ? styles.unreadName : ""}`}>{t.title}</span>
-                    <span className={styles.time}>{listTime(t.date)}</span>
-                  </span>
-                  <span className={styles.threadBottom}>
-                    <span className={styles.snippet}>{t.snippet ?? ""}</span>
-                    {t.unread > 0 && <span className={styles.badge}>{t.unread}</span>}
-                  </span>
-                </button>
-              </li>
+              <ThreadRow key={t.id} thread={t} selected={selection?.kind === "thread" && selection.id === t.id} onOpen={() => setSelection({ kind: "thread", id: t.id })} />
             ))}
           </ul>
         )}
@@ -133,6 +128,23 @@ export function Messenger({ paired, conn, onUnpaired }: { paired: Paired; conn: 
         )}
       </section>
     </div>
+  );
+}
+
+function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; selected: boolean; onOpen: () => void }) {
+  return (
+    <li>
+      <button className={`${styles.thread} ${selected ? styles.selected : ""}`} onClick={onOpen}>
+        <span className={styles.threadTop}>
+          <span className={`${styles.name} ${t.unread > 0 ? styles.unreadName : ""}`}>{t.title}</span>
+          <span className={styles.time}>{listTime(t.date)}</span>
+        </span>
+        <span className={styles.threadBottom}>
+          <span className={styles.snippet}>{t.snippet ?? ""}</span>
+          {t.unread > 0 && <span className={styles.badge}>{t.unread}</span>}
+        </span>
+      </button>
+    </li>
   );
 }
 

@@ -17,13 +17,15 @@ Last updated: 2026-11-20.
 - Mickey will not run the Wi-Fi-drop-mid-send check on his real phone. It is
   accepted on emulator evidence (DECISIONS.md, "Phase 3 gate"). Do not ask
   again.
-- Next is phase 4 (harden) from [PLAN.md](PLAN.md). Its gate is a week of
-  daily use, which started in effect on 2026-11-11. Already in place from
-  earlier phases: start after boot, reconnect with a capped wait, tray, MMS
-  images, read-only group threads, search. Built in phase 4 so far: faster
-  history pages, "Start with Windows" (off by default, in the status
-  menu), and FTS5 search. Not started: signed APK and installer, and the
-  open items below.
+- Phase 4 (harden) from [PLAN.md](PLAN.md) is in progress. Its gate, a week
+  of daily use without picking up the phone to text, passed: Mickey on
+  2026-11-20, after using it since 2026-11-11, "Texting worked perfectly"
+  (DECISIONS.md, "Phase 4 gate"). Already in place from earlier phases:
+  start after boot, reconnect with a capped wait, tray, MMS images,
+  read-only group threads, search. Built in phase 4: faster history pages,
+  "Start with Windows" (off by default, in the status menu), FTS5 search,
+  and search by contact name and number. What keeps phase 4 open is signed
+  APK and installer, which waits on Mickey's decisions (last section).
 - The phase 4 work went onto both devices on 2026-11-20 (APK with
   `adb install -r`, installer with `/S`, the PC store backed up first to
   `%LOCALAPPDATA%\io.github.mgelsinger.smsbridge\backup-before-969c085`).
@@ -75,9 +77,10 @@ Last updated: 2026-11-20.
   `sms-bridge-desktop.exe`.
 - Search changed with the FTS5 index: it matches whole words and word
   beginnings in any order, and no longer text in the middle of a word
-  (DECISIONS.md, "Phase 4"). The first start of the new Windows build
-  upgrades the local store in place. The search box still looks only at
-  message text; the plan also wants it to filter by contact name and number.
+  (DECISIONS.md, "Phase 4"). The store upgrade was seen working on the real
+  PC on 2026-11-20. Since 2026-11-20 the search box also lists the
+  conversations whose contact name or number matches, above the message
+  hits; in CI and unit tests only until the next PC install.
 - Dependency updates are waiting. Dependabot's grouped PRs (#6 and #7, which
   it replaced itself with #9 for npm and #8 for Gradle) were closed unmerged
   on 2026-11-14 because CI was red on both. They are toolchain migrations,

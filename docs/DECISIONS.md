@@ -3,6 +3,28 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Phase 4 gate, 2026-11-20
+
+**The week of daily use passed.** Mickey used the PC for texting from
+2026-11-11 to 2026-11-20 and on 2026-11-20 said: "Texting worked perfectly.
+Anytime I got a new message, I was notified. I know when things are sending,
+I know when things are sent." He did not report reaching for the phone to
+text. Phase 4 stays open only for signed releases, which need his key and
+his decisions (STATUS.md, "Signed releases").
+
+**Search finds conversations by contact name and number, in the window, not
+the store.** The plan has the search box filter "by name, number, and body".
+Body was the FTS5 index; names and numbers are matched against the thread
+list the window already holds, so there is no new command and no store
+change. While a query is typed, the conversations it names are listed above
+the message hits. Names follow the message rule (every typed word begins a
+word of the name, any order, case and accents ignored); a query made only of
+digits and the marks people put in numbers (`+ ( ) - .` and spaces) with at
+least three digits finds every conversation with a participant whose number
+contains those digits, so "(585) 555-0101", "5855550101" and "0101" all find
+the same one. Contacts with no conversation are not listed; the new-message
+screen already suggests those.
+
 ## Calls, 2026-11-20
 
 **Phone calls are in scope, as phases 6 and 7.** Mickey asked for it on
