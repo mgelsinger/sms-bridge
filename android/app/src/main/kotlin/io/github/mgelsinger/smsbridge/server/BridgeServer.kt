@@ -79,6 +79,7 @@ class BridgeServer(
                     val queue = Channel<WsFrame>(256, BufferOverflow.DROP_OLDEST)
                     val collector = launch(start = CoroutineStart.UNDISPATCHED) { hub.frames.collect { queue.trySend(it) } }
                     send(Frame.Text(api.encode(api.hello())))
+                    for (f in api.afterHello()) send(Frame.Text(api.encode(f)))
                     val forwarder = launch { for (f in queue) send(Frame.Text(api.encode(f))) }
                     val revoker = launch {
                         hub.revoked.filter { it == client.id }.first()

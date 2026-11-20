@@ -1,7 +1,10 @@
 package io.github.mgelsinger.smsbridge.core
 
+import io.github.mgelsinger.smsbridge.protocol.CallActionFrame
+import io.github.mgelsinger.smsbridge.protocol.CallsPage
 import io.github.mgelsinger.smsbridge.protocol.ContactsResponse
 import io.github.mgelsinger.smsbridge.protocol.DeviceStatus
+import io.github.mgelsinger.smsbridge.protocol.DialFrame
 import io.github.mgelsinger.smsbridge.protocol.ErrorBody
 import io.github.mgelsinger.smsbridge.protocol.ErrorCode
 import io.github.mgelsinger.smsbridge.protocol.ErrorDetail
@@ -49,6 +52,8 @@ class BridgeApi(
         listOf(ErrorFrame(code = ErrorCode.SEND_FAILED, message = "Sending is not enabled yet", clientId = frame.clientId))
     },
     private val log: (String) -> Unit = {},
+    /** Null on a build or in a test without calls: the phone then says nothing about them. */
+    private val calls: CallDesk? = null,
 ) {
     fun authenticate(authorization: String?): PairedClient? = pairing.authenticate(authorization)
 
@@ -63,8 +68,12 @@ class BridgeApi(
             isDefaultSmsApp = info.isDefaultSmsApp,
             uptimeSeconds = (now() - startedAt) / 1000,
             pairedClients = pairing.clients.value.size,
+            calls = calls?.abilities(),
         )
     }
+
+    /** Frames every session gets right after `hello`: what the line is doing now. */
+    fun afterHello(): List<WsFrame> = listOfNotNull(calls?.lineFrame())
 
     fun hello(): HelloFrame {
         val info = repo.deviceInfo()
@@ -126,6 +135,13 @@ class BridgeApi(
                 ok(SyncPage.serializer(), SyncPage(messages = result.messages, nextCursor = result.next.encode(), hasMore = result.hasMore))
             }
             path == "/contacts" -> ok(ContactsResponse.serializer(), ContactsResponse(contacts = repo.contacts()))
+            path == "/calls" && calls != null -> {
+                val limit = limit(query["limit"], 200, 500) ?: return error(400, ErrorCode.BAD_REQUEST, "limit must be 1-500")
+                val from = query["cursor"]?.let { CallCursor.decode(it) ?: return badCursor() }
+                val page = calls.page(from, limit)
+                    ?: return error(403, ErrorCode.NOT_PERMITTED, "the phone app may not read the call history")
+                ok(CallsPage.serializer(), page)
+            }
             else -> {
                 val part = MMS_PART.matchEntire(path)?.groupValues?.get(1)?.toLongOrNull()
                     ?: return error(404, ErrorCode.NOT_FOUND, "no such endpoint")
@@ -176,7 +192,8 @@ class BridgeApi(
             )
         }
         val type = obj["type"]?.jsonPrimitive?.content
-        if (type !in CLIENT_TYPES) return FrameReply() // Unknown types are ignored for forward compatibility.
+        val known = type in CLIENT_TYPES || (calls != null && type in CALL_TYPES)
+        if (!known) return FrameReply() // Unknown types are ignored for forward compatibility.
 
         val frame = try {
             ProtocolJson.decodeFromJsonElement(WsFrame.serializer(), obj)
@@ -196,9 +213,18 @@ class BridgeApi(
                     FrameReply(sendHandler.send(client, frame))
                 }
             }
+            is DialFrame -> callReply(obj, calls?.problem(frame)) { calls?.dial(frame) }
+            is CallActionFrame -> callReply(obj, calls?.problem(frame)) { calls?.act(frame) }
             else -> FrameReply()
         }
     }
+
+    private fun callReply(obj: JsonObject, problem: String?, act: () -> WsFrame?): FrameReply =
+        if (problem != null) {
+            FrameReply(listOf(ErrorFrame(code = ErrorCode.BAD_REQUEST, message = problem, clientId = validClientId(obj))))
+        } else {
+            FrameReply(listOfNotNull(act()))
+        }
 
     private fun validClientId(obj: JsonObject): String? =
         (obj["client_id"]?.jsonPrimitive?.content)?.takeIf { SendValidation.UUID_V4.matches(it) }
@@ -223,6 +249,7 @@ class BridgeApi(
         private val MMS_PART = Regex("^/mms/(\\d{1,18})$")
         private val CODE = Regex("^\\d{6}$")
         private val CLIENT_TYPES = setOf("send", "ping", "mark_read")
+        private val CALL_TYPES = setOf("dial", "call_action")
 
         /** Error body for requests the server refuses before they reach [handle]. */
         fun unauthorized(): ApiResponse = ApiResponse(

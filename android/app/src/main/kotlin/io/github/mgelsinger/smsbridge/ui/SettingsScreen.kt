@@ -63,6 +63,17 @@ private val REQUIRED = buildList {
 
 private fun missing(context: Context) = REQUIRED.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
 
+/** Calls are optional: texts never wait on these. Each is listed with what it is for. */
+private val CALLS = listOf(
+    Manifest.permission.READ_PHONE_STATE to "see whether the phone is ringing or in a call",
+    Manifest.permission.READ_CALL_LOG to "show the call history and who is calling",
+    Manifest.permission.CALL_PHONE to "place a call you start on the PC",
+    Manifest.permission.ANSWER_PHONE_CALLS to "answer, decline, and hang up from the PC",
+)
+
+private fun missingForCalls(context: Context) =
+    CALLS.filter { context.checkSelfPermission(it.first) != PackageManager.PERMISSION_GRANTED }
+
 @Composable
 fun SettingsScreen(graph: AppGraph) {
     val context = LocalContext.current
@@ -74,6 +85,7 @@ fun SettingsScreen(graph: AppGraph) {
     var refresh by remember { mutableIntStateOf(0) }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     val missingNow = remember(refresh) { missing(context) }
+    val missingCalls = remember(refresh) { missingForCalls(context) }
     val batteryExempt = remember(refresh) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     }
@@ -105,6 +117,12 @@ fun SettingsScreen(graph: AppGraph) {
             }
         }
         item {
+            CallsCard(
+                missing = missingCalls.map { it.second },
+                onGrant = { permissions.launch(missingCalls.map { it.first }.toTypedArray()) },
+            )
+        }
+        item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Paired PCs", style = MaterialTheme.typography.titleMedium)
@@ -132,7 +150,7 @@ fun SettingsScreen(graph: AppGraph) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Recent events", style = MaterialTheme.typography.titleMedium)
-                    Text("Message text is never logged.", style = MaterialTheme.typography.bodySmall)
+                    Text("Message text and phone numbers are never logged.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -148,7 +166,12 @@ fun SettingsScreen(graph: AppGraph) {
         AlertDialog(
             onDismissRequest = { graph.confirmations.answer(false) },
             title = { Text("Pair with \"${p.clientName}\"?") },
-            text = { Text("This PC will be able to read your texts and send texts from your number while it is on your Wi-Fi.") },
+            text = {
+                Text(
+                    "This PC will be able to read your texts and send texts from your number while it is on your Wi-Fi." +
+                        if (missingCalls.size < CALLS.size) " It will also see your calls and can place and end them, as far as you allowed calls here." else "",
+                )
+            },
             confirmButton = { Button(onClick = { graph.confirmations.answer(true) }) { Text("Allow") } },
             dismissButton = { TextButton(onClick = { graph.confirmations.answer(false) }) { Text("Decline") } },
         )
@@ -206,6 +229,26 @@ private fun SetupCard(
             if (!batteryExempt) {
                 Text("Let the bridge run in the background so texts reach your PC while the screen is off.")
                 OutlinedButton(onClick = onBattery) { Text("Allow background use") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallsCard(missing: List<String>, onGrant: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Calls", style = MaterialTheme.typography.titleMedium)
+            if (missing.isEmpty()) {
+                Text("A paired PC can see who is calling and your call history, and can place, answer, decline, and end calls. You talk on the phone.")
+            } else {
+                Text("Optional. Texts work without it. To use calls from the PC, the app needs to:")
+                for (what in missing) Text("• $what", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onGrant) { Text("Allow calls") }
+                Text(
+                    "The PC never places a call by itself, and emergency numbers are always dialed on the phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }

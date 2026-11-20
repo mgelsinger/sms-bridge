@@ -7,6 +7,16 @@
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- Calls from the PC. All optional and asked for apart from the ones above:
+         without them the app carries texts exactly as before. READ_PHONE_STATE says
+         whether the line is idle, ringing, or in a call; READ_CALL_LOG gives the call
+         history and who is ringing; CALL_PHONE places a call; ANSWER_PHONE_CALLS
+         answers, declines, and hangs up. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
     <!-- The LAN server, Wi-Fi binding, and mDNS discovery. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

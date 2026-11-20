@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 class BridgeService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var watcher: MessageWatcher
+    private lateinit var callWatcher: CallWatcher
     private lateinit var wifi: WifiMonitor
     private lateinit var nsd: NsdAdvertiser
     private var server: BridgeServer? = null
@@ -41,6 +42,7 @@ class BridgeService : Service() {
         )
         val g = graph
         watcher = MessageWatcher(this, g.repo, g.hub, g.log::add, scope, g.tracker).also { it.start() }
+        callWatcher = CallWatcher(this, g.telephone, g.line, g.hub, g.log::add, scope).also { it.start() }
         g.sender.register()
         nsd = NsdAdvertiser(this, g.log::add)
         wifi = WifiMonitor(this) { address -> scope.launch { onWifi(address) } }.also { it.start() }
@@ -88,6 +90,7 @@ class BridgeService : Service() {
     override fun onDestroy() {
         wifi.stop()
         watcher.stop()
+        callWatcher.stop()
         graph.sender.unregister()
         synchronized(this) { stopServer() }
         scope.cancel()

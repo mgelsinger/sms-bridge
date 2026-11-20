@@ -3,8 +3,10 @@ package io.github.mgelsinger.smsbridge.platform
 import android.app.Application
 import android.content.Context
 import io.github.mgelsinger.smsbridge.core.BridgeApi
+import io.github.mgelsinger.smsbridge.core.CallDesk
 import io.github.mgelsinger.smsbridge.core.ClientStore
 import io.github.mgelsinger.smsbridge.core.EventHub
+import io.github.mgelsinger.smsbridge.core.LineTracker
 import io.github.mgelsinger.smsbridge.core.PairedClient
 import io.github.mgelsinger.smsbridge.core.PairingManager
 import io.github.mgelsinger.smsbridge.core.SendTracker
@@ -36,6 +38,9 @@ class AppGraph(val context: Context) {
     val confirmations = PairingConfirmations()
     val tracker = SendTracker()
     val sender = AndroidSender(context, repo, tracker, hub, log::add)
+    val telephone = AndroidTelephone(context)
+    val line = LineTracker()
+    val calls = CallDesk(telephone, line, log = log::add)
     val identity: TlsIdentity by lazy { KeystoreIdentity.loadOrCreate() }
     val api: BridgeApi by lazy {
         BridgeApi(
@@ -44,6 +49,7 @@ class AppGraph(val context: Context) {
             confirmPairing = { name -> confirmations.request(context, name) },
             sendHandler = sender,
             log = log::add,
+            calls = calls,
         )
     }
 
