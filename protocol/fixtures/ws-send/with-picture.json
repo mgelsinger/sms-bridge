@@ -1,0 +1,14 @@
+{
+  "protocol_version": 1,
+  "type": "send",
+  "client_id": "8c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+  "thread_id": 11,
+  "body": "Look at this",
+  "attachments": [
+    {
+      "content_type": "image/jpeg",
+      "name": "IMG_2041.jpg",
+      "data": "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+    }
+  ]
+}

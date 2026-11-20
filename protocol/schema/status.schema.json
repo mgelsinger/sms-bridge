@@ -55,6 +55,9 @@
     },
     "calls": {
       "$ref": "common.schema.json#/$defs/call_abilities"
+    },
+    "mms": {
+      "$ref": "common.schema.json#/$defs/mms_abilities"
     }
   },
   "required": [

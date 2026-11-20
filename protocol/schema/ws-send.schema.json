@@ -22,21 +22,29 @@
         "$ref": "common.schema.json#/$defs/address"
       },
       "minItems": 1,
-      "maxItems": 1,
+      "maxItems": 20,
       "uniqueItems": true,
-      "description": "Version 1 sends SMS to one recipient; group sends are MMS and arrive in a later version."
+      "description": "One number sends an SMS, or an MMS when there are attachments. More than one number sends one group MMS to all of them."
     },
     "body": {
       "type": "string",
       "minLength": 1,
       "maxLength": 5000
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/outgoing_attachment"
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Sent as one MMS together with the body, if any."
     }
   },
   "required": [
     "protocol_version",
     "type",
-    "client_id",
-    "body"
+    "client_id"
   ],
   "additionalProperties": false,
   "oneOf": [
@@ -59,6 +67,18 @@
           "thread_id"
         ]
       }
+    }
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "body"
+      ]
+    },
+    {
+      "required": [
+        "attachments"
+      ]
     }
   ]
 }

@@ -1,0 +1,14 @@
+{
+  "protocol_version": 1,
+  "type": "send",
+  "client_id": "8c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+  "to": [
+    "+15855550101"
+  ],
+  "attachments": [
+    {
+      "content_type": "image/jpeg",
+      "data": "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+    }
+  ]
+}
