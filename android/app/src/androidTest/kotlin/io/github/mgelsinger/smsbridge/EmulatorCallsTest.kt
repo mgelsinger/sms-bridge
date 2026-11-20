@@ -76,9 +76,23 @@ class EmulatorCallsTest {
         Log.i("SmsBridgeCue", text)
     }
 
+    /**
+     * What the system says the line is doing, or null while it will not say.
+     * Regression: a permission granted for a test takes a moment to reach the
+     * app-op behind it, and until then this call throws. The first tests of a
+     * run failed in setUp on that, before any call was made.
+     */
     @Suppress("DEPRECATION")
-    private fun systemSaysIdle() =
-        context.getSystemService(TelephonyManager::class.java).callState == TelephonyManager.CALL_STATE_IDLE
+    private fun systemCallState(): Int? =
+        runCatching { context.getSystemService(TelephonyManager::class.java).callState }.getOrNull()
+
+    private fun systemSaysIdle() = systemCallState() == TelephonyManager.CALL_STATE_IDLE
+
+    private fun awaitPermissionsInEffect() {
+        val deadline = System.currentTimeMillis() + 30_000
+        while (systemCallState() == null && System.currentTimeMillis() < deadline) Thread.sleep(100)
+        assertTrue("the phone-state permission took effect within 30 s", systemCallState() != null)
+    }
 
     private fun hangUpEverything() {
         cue("hangup $CALLER")
@@ -90,6 +104,7 @@ class EmulatorCallsTest {
 
     @Before
     fun setUp() {
+        awaitPermissionsInEffect()
         hangUpEverything()
         assertTrue("the emulator's line is idle before the test", systemSaysIdle())
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
