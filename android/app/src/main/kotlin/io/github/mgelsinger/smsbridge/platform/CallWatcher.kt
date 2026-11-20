@@ -15,6 +15,7 @@ import io.github.mgelsinger.smsbridge.core.EventHub
 import io.github.mgelsinger.smsbridge.core.Hook
 import io.github.mgelsinger.smsbridge.core.LineTracker
 import io.github.mgelsinger.smsbridge.protocol.CallFrame
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -54,6 +55,10 @@ class CallWatcher(
     private var loop: Job? = null
     private var poll: Job? = null
     private var observing = false
+    private val watching = CompletableDeferred<Unit>()
+
+    /** Returns once the watcher has looked at the call log for the first time. */
+    suspend fun awaitWatching() = watching.await()
 
     fun start() {
         ContextCompat.registerReceiver(
@@ -76,6 +81,7 @@ class CallWatcher(
         }
         loop = scope.launch {
             scan()
+            watching.complete(Unit)
             for (t in trigger) {
                 delay(DEBOUNCE_MS)
                 scan()

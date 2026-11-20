@@ -117,12 +117,6 @@ fun SettingsScreen(graph: AppGraph) {
             }
         }
         item {
-            CallsCard(
-                missing = missingCalls.map { it.second },
-                onGrant = { permissions.launch(missingCalls.map { it.first }.toTypedArray()) },
-            )
-        }
-        item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Paired PCs", style = MaterialTheme.typography.titleMedium)
@@ -145,6 +139,13 @@ fun SettingsScreen(graph: AppGraph) {
                     ) { Text("Pair a PC") }
                 }
             }
+        }
+        // Below the paired PCs: calls are optional, and pairing must stay on the first screen.
+        item {
+            CallsCard(
+                missing = missingCalls.map { it.second },
+                onGrant = { permissions.launch(missingCalls.map { it.first }.toTypedArray()) },
+            )
         }
         item {
             Card(Modifier.fillMaxWidth()) {

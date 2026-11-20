@@ -144,6 +144,7 @@ class CallDesk(
     private val line: LineTracker,
     private val now: () -> Long = System::currentTimeMillis,
     private val log: (String) -> Unit = {},
+    private val pause: (Long) -> Unit = { Thread.sleep(it) },
 ) {
     private val answered = LinkedHashMap<String, Pair<CallResultFrame, Long>>()
 
@@ -196,17 +197,34 @@ class CallDesk(
             CallAction.ANSWER -> when {
                 !abilities.answer -> "the phone app may not answer calls"
                 state != LineState.RINGING -> "no call is ringing"
+                !stillRingingAfterSettling() -> "no call is ringing"
                 else -> phone.answer()
             }
             CallAction.END -> when {
                 !abilities.end -> "the phone app may not end calls"
                 state == LineState.IDLE -> "there is no call to end"
+                state == LineState.RINGING && !stillRingingAfterSettling() -> "there is no call to end"
                 else -> phone.end()
             }
         }
     }.also {
         val what = frame.action.name.lowercase()
         log(if (it.status == CallResultStatus.OK) "$what handed to the phone" else "$what refused: ${it.error}")
+    }
+
+    /**
+     * Leaves a call alone for the first moments it rings, then says whether it
+     * still does. Regression: ending a call 136 ms after it began to ring
+     * crashed the system process on Android 14, whose ringtone player stops a
+     * ringtone it has not finished loading. No person clicks that fast, but a
+     * request can arrive that fast, and the phone must not fall over for it.
+     */
+    private fun stillRingingAfterSettling(): Boolean {
+        val ringing = line.current()
+        if (ringing.state != LineState.RINGING) return false
+        val wait = MIN_RING_MS - (now() - ringing.since)
+        if (wait > 0) pause(wait)
+        return line.current().state == LineState.RINGING
     }
 
     /** Runs [attempt] unless this `client_id` was answered in the last 24 hours. */
@@ -228,6 +246,7 @@ class CallDesk(
     private companion object {
         const val REMEMBER_MS = 24 * 60 * 60 * 1000L
         const val REMEMBER_MAX = 500
+        const val MIN_RING_MS = 1_500L
         const val SEPARATORS = " ()-. "
         val DIALABLE = Regex("^\\+?[0-9*#]{1,32}$")
     }
