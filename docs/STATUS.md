@@ -38,8 +38,12 @@ Last updated: 2026-11-20.
   PC), where the old per-MMS lookups would have cost about 180 queries.
 - Phone calls were added to the plan on 2026-11-20 at Mickey's request, as
   phases 6 (calls over the bridge, voice on the phone) and 7 (voice on the PC
-  over Bluetooth hands-free). Plan only, no code. See PLAN.md, "Calls", and
-  the open item below. Scope stays Android and Windows.
+  over Bluetooth hands-free). Scope stays Android and Windows. Phase 6 is
+  built and on `main` as far as CI can prove it: protocol, mock phone, phone
+  app, PC core, PC window. It is not on Mickey's devices and no real call has
+  gone through it. Phase 7 is not started; a throwaway program for its
+  deciding experiment is built. What is left is all at the desk:
+  [CALLS-DESK.md](CALLS-DESK.md).
 - The agent reaches the phone over adb Wireless debugging, which Mickey turns
   on and pairs himself. Reading the app's status and installing builds is
   fine; permission prompts, pairing approval, and sending texts are his.
@@ -125,14 +129,26 @@ Last updated: 2026-11-20.
   is marked `read_restriction = 65536` and withheld from that app. The phone
   did not do this as of 2026-11-14. If texts sent from the PC ever stop
   showing as one matched bubble after a phone update, look here first.
-- Calls: the experiment that opens phase 6 is not run. It needs Mickey at the
-  desk: pair the phone with the PC over Bluetooth in Windows Settings, then
-  place one call himself while a throwaway program on the PC watches. The
-  program is not written yet. Known so far (2026-11-20, no phone involved):
-  the PC has a Bluetooth radio, no phone is paired to it, and Windows' calling
-  classes answer from an unpackaged process. Whether to run it before the
-  phase 4 week is over is Mickey's call; it touches neither installed app.
-  The agent never places or answers a call on his phone.
+- Calls, phase 6: unproven on Android 17 and on the real PC. The phone app
+  answers and ends calls through two `TelecomManager` methods deprecated
+  since Android 10; they work on the Android 14 emulator and nobody knows yet
+  whether Mickey's phone still honours them. Same for the caller's number
+  arriving while it rings, and for a call started from the background
+  service. The steps are Part A of [CALLS-DESK.md](CALLS-DESK.md). The new
+  phone build asks for nothing until he taps "Allow calls"; until then the PC
+  says calls are not allowed on the phone and texts are untouched.
+- Calls, phase 7: the Bluetooth experiment is not run. `tools/calls-probe` is
+  built (`tools/calls-probe/target/release/calls-probe.exe` on this PC) and
+  runs end to end with `--no-phone`. Known without the phone: the PC has a
+  Bluetooth radio, no phone is paired to it, and Windows' calling classes
+  answer from an unpackaged process. Part B of CALLS-DESK.md.
+- Calls, not built: the PC cannot silence the ringer (needs the dialer role),
+  shows no contact pictures, and has no search over the call history. The
+  status menu has "Pop-ups for calls", on by default; Mickey has not been
+  asked whether he wants that default.
+- The agent never places or answers a call on Mickey's phone. Call tests run
+  on CI's emulator only; local connected tests stay forbidden while his phone
+  is attached to adb, and on 2026-11-20 it was.
 - The Windows installer is unsigned and dev APKs use a public dev key.
   Signed releases are not started; see the next section.
 

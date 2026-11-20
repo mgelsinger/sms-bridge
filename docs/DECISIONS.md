@@ -46,6 +46,89 @@ contains those digits, so "(585) 555-0101", "5855550101" and "0101" all find
 the same one. Contacts with no conversation are not listed; the new-message
 screen already suggests those.
 
+## Phase 6 build, 2026-11-20
+
+Built the same day Mickey asked for calls, at his word: "complete everything
+else you possibly can before me reaching my desk". Phase 5 is optional and was
+skipped over. What needs his phone is in CALLS-DESK.md.
+
+**The protocol describes the phone's line, not calls.** An app that is not
+the dialer learns three things from Android: idle, ringing, off the hook, and
+who is ringing. It does not learn when an outbound call is answered, and it
+does not see a held call. So `call_state` carries exactly that, and the PC
+does not pretend to more: an outbound call is "active" from the moment it is
+dialed, and a second call during a call shows as ringing, then active.
+Per-call objects with ids were the alternative, and would have been made up.
+
+**One action, `end`, both declines and hangs up.** It is the same call on the
+phone (`TelecomManager.endCall`), and the PC labels the button by what the
+line is doing. There is no silence action: that needs the dialer role.
+
+**The phone reads the line from the phone-state broadcast.** It works from
+Android 10 up and carries the caller's number; the newer `TelephonyCallback`
+carries no number at all. `READ_PHONE_STATE` therefore comes back, having been
+dropped in phase 1. Android delivers a ringing call twice, with and without
+the number, in either order; the tracker merges them.
+
+**Calls are four optional permissions, asked for from their own card.**
+`READ_PHONE_STATE`, `READ_CALL_LOG`, `CALL_PHONE`, `ANSWER_PHONE_CALLS`. None
+is in the list the Setup card insists on, so a phone that never allows calls
+carries texts exactly as before and tells the PC so in `status.calls`. The
+card sits below Paired PCs: above it, it pushed pairing off the first screen,
+which an existing UI test caught.
+
+**Each call request is acted on once, on both sides.** The phone remembers
+`client_id` values for 24 hours and answers a repeat without acting. The PC
+never queues a dial or a call action: with no connection it fails at once,
+with no answer in 10 seconds it fails, and a lost connection fails whatever
+was waiting and reports the line idle so a ringing call is never left on
+screen. A request that failed that way may still have reached the phone; the
+call bar then shows the truth.
+
+**The phone decides what an emergency number is.** `TelephonyManager
+.isEmergencyNumber` knows the SIM's country; the PC does not. If the phone
+cannot answer, a short fixed list (911, 112, 999 and a few more) is refused
+anyway. The PC shows the refusal and never dials around it.
+
+**The PC keeps every call it has seen.** It syncs the whole call log on first
+connect and from its cursor after that. An entry deleted on the phone stays on
+the PC, as PROTOCOL.md says. History from that first sync is marked seen;
+a call missed later counts on the taskbar dot and the tray tooltip until the
+Calls view is opened.
+
+**Call pop-ups are on by default, unlike text pop-ups.** A text waits for the
+taskbar dot to be noticed; a ringing phone does not. A ringing or missed call
+raises a Windows pop-up unless the window is in front. "Pop-ups for calls" in
+the status menu switches them off (`pref:call_popups_off`). This departs from
+what Mickey chose for texts and he has not been asked: flip the default if he
+says so.
+
+**The window gains a rail: Texts and Calls.** The call bar sits above both,
+so a call shows whatever is on screen. The answer button says "Answer on
+phone" until phase 7 can carry the voice. Ctrl+D opens the dial pad. A
+one-to-one conversation has a Call button in its header.
+
+**Emulator call tests ask the host for calls through logcat.** A call into an
+emulator starts with `adb emu gsm call` on the host, and a test needs it at a
+moment of its own choosing. It writes `ring <number>` or `hangup <number>`
+under the tag `SmsBridgeCue`, and `tools/scripts/ci-emulator-test.sh` acts on
+it. On CI's Android 14 emulator (run of 2026-11-20) this proved, against real telephony: a call in rings with its number, is answered from the client, and lands in the history; a ringing call is declined and logged as rejected; a call out is placed once however often the request is repeated, is ended from the client, and is logged.
+
+**A call is left alone for the first 1.5 seconds it rings.** The first run of
+the decline test ended a call 136 ms into the ring and the emulator's system
+process died: Android 14's Telecom stops a ringtone it has not finished
+loading (`NullPointerException` in `AsyncRingtonePlayer.handlePlay`). No
+person clicks that fast, but a request can arrive that fast, so the phone app
+waits out the rest of the 1.5 seconds before it answers or ends, and then
+acts only if the call still rings. Whether Android 17 has the same fault is
+not known; the wait costs nothing either way.
+
+**`tools/calls-probe` uses Microsoft's `windows` crate.** It reaches
+`Windows.ApplicationModel.Calls`, which neither the standard library nor the
+`windows-registry` crate the app already uses covers. The probe stands apart
+from both apps; if phase 7 goes ahead, the desktop core will need the same
+crate, already in its lock file through Tauri.
+
 ## Calls, 2026-11-20
 
 **Phone calls are in scope, as phases 6 and 7.** Mickey asked for it on
@@ -463,3 +546,4 @@ test-only certificate. Set `MOCK_HOST` to expose it on the LAN.
 | Compose, AndroidX core and activity | Android | Plan choice for the settings UI |
 | `tauri`, React, Vite, TypeScript | desktop | Plan choice for the Windows app |
 | `vitest` | desktop | Test runner that shares Vite's config |
+| `windows` | calls-probe only | Microsoft's bindings for `Windows.ApplicationModel.Calls`, the Bluetooth hands-free calling API; nothing else reaches it |

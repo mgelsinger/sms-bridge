@@ -246,7 +246,9 @@ Added 2026-11-20. Phases 6 and 7 follow phase 4's gate; phase 5 stays optional a
 
 **Why two phases.** Android gives an ordinary app the facts about a call and a few ways to steer it, and never the voice. Capturing call audio needs `CAPTURE_AUDIO_OUTPUT`, which only system apps hold, and being the default phone app does not grant it either. So the voice cannot travel over the bridge. The route that works is the one car kits and Windows Phone Link use: Bluetooth Hands-Free Profile, with the PC as the hands-free unit. Phase 6 is everything that fits the bridge as it is and works anywhere on the Wi-Fi. Phase 7 adds the voice and works only within Bluetooth range.
 
-**The experiment that comes first.** A throwaway Windows program, not part of either app, run at the desk with the phone paired to the PC over Bluetooth in Windows Settings. It answers, in order:
+**Order, as it happened.** Phase 6 was built on 2026-11-20 ahead of the experiment, at Mickey's word, because nothing in it depends on the answer. The experiment still decides phase 7.
+
+**The experiment that decides phase 7.** A throwaway Windows program (`tools/calls-probe`), not part of either app, run at the desk with the phone paired to the PC over Bluetooth in Windows Settings. It answers, in order:
 
 1. Does `Windows.ApplicationModel.Calls.PhoneLineTransportDevice` list the phone, and do `RequestAccessAsync`, `RegisterApp`, and `Connect` succeed from an app installed the way ours is (unpackaged, per user)? Checked on 2026-11-20 without the phone: the classes load and answer from an unpackaged process, and the PC has a Bluetooth radio. Access to a real device is the open part.
 2. With Mickey placing a call himself: does the PC see it, carry the audio both ways, and hang it up?
