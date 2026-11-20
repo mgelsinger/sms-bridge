@@ -10,7 +10,7 @@ Last updated: 2026-11-20.
   hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); results and
   what was found on the way are in [PHASE-2.md](PHASE-2.md) and
   [PHASE-3.md](PHASE-3.md).
-- Running on both the phone and the PC: dev build dev-969c085 since
+- Running on the phone: dev-969c085; on the PC: dev-0351f88, both since
   2026-11-20 (dev-5e591cf from 2026-11-11 before that), paired, and in
   ordinary daily use. Texts arrive overnight with the taskbar dot; texts sent
   from the PC go out once.
@@ -80,7 +80,10 @@ Last updated: 2026-11-20.
   (DECISIONS.md, "Phase 4"). The store upgrade was seen working on the real
   PC on 2026-11-20. Since 2026-11-20 the search box also lists the
   conversations whose contact name or number matches, above the message
-  hits; in CI and unit tests only until the next PC install.
+  hits. Installed on the PC as dev-0351f88 the same day and checked in the
+  real window: a contact found by three letters of a surname, a number
+  found typed as (xxx) xxx-xxxx, "Nothing matches." for gibberish. The
+  phone stays on dev-969c085; nothing since needs a new APK.
 - Dependency updates are waiting. Dependabot's grouped PRs (#6 and #7, which
   it replaced itself with #9 for npm and #8 for Gradle) were closed unmerged
   on 2026-11-14 because CI was red on both. They are toolchain migrations,
@@ -136,6 +139,14 @@ Last updated: 2026-11-20.
 ## Signed releases: what Mickey must provide or decide
 
 Nothing below can be done for him. Until it is, dev builds stay as they are.
+
+Decided on 2026-11-20 (DECISIONS.md, "Release choices"): one app id for dev
+and release (item 4), the Windows installer stays unsigned (items 5 and 6),
+and a release is cut by a `v0.1.0`-style tag he pushes (item 8). Still
+open: the Android key and its four secrets (items 1 and 2), "not now" on
+2026-11-20, so do not raise it again until he does or until something needs
+a release; the uninstall date (item 3) follows from the key. Item 7 was not
+asked; the installer stays per user until he says otherwise.
 
 Android
 

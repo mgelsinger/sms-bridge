@@ -3,6 +3,27 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Release choices, 2026-11-20
+
+Asked of Mickey on 2026-11-20; his answers.
+
+**The Android release key: not now.** Dev-key builds continue. Phase 4 stays
+open on this one item; nothing else in it is waiting.
+
+**Dev and release builds share one app id.** His words: "This doesn't
+really release yet anybody but me, so we can probably stick with just one
+app." The cost, accepted: going from a dev build to a release build or back
+means uninstalling, granting the permissions again, and pairing again.
+
+**The Windows installer stays unsigned.** SmartScreen warns once per new
+build. Revisit if the friend install path makes the warning a problem.
+
+**A release is a tag he pushes, such as `v0.1.0`.** CI builds both apps from
+it and publishes a GitHub release that is not a prerelease. Dev builds keep
+coming from every green push to `main`. Not built yet: without the key, the
+release APK could only carry the public dev key, which is what a release
+exists to avoid.
+
 ## Phase 4 gate, 2026-11-20
 
 **The week of daily use passed.** Mickey used the PC for texting from
