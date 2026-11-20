@@ -35,6 +35,8 @@ fn check(dir: &str, text: &str) -> Option<Result<(), String>> {
         "threads-page" => round_trip::<ThreadsPage>(text),
         "messages-page" => round_trip::<MessagesPage>(text),
         "sync-page" => round_trip::<SyncPage>(text),
+        "call" => round_trip::<Call>(text),
+        "calls-page" => round_trip::<CallsPage>(text),
         "pair-request" => round_trip::<PairRequest>(text),
         "pair-response" => round_trip::<PairResponse>(text),
         "pairing-qr" => round_trip::<PairingQr>(text),

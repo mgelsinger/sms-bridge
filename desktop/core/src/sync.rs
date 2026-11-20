@@ -27,8 +27,13 @@ fn next_backoff(current: Duration) -> Duration {
     (current * 2).min(MAX_BACKOFF)
 }
 const SYNC_PAGE: u32 = 200;
+const CALLS_PAGE: u32 = 200;
+/// How long the phone has to say what became of a dial or a call action.
+/// After this the user is told it failed; it is never sent again.
+const CALL_RESULT_WITHIN: Duration = Duration::from_secs(10);
 const INITIAL_MESSAGES_PER_THREAD: u32 = 100;
 pub const META_SYNC_CURSOR: &str = "sync_cursor";
+pub const META_CALLS_CURSOR: &str = "calls_cursor";
 
 pub fn now_ms() -> u64 {
     SystemTime::now()
@@ -56,6 +61,28 @@ pub enum ConnState {
     Stopped,
 }
 
+/// What the phone's line is doing, as far as this PC knows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Line {
+    pub state: LineState,
+    pub direction: Option<Direction>,
+    pub number: Option<String>,
+    /// Epoch milliseconds on the phone's clock.
+    pub since: u64,
+}
+
+impl Line {
+    /// No call, or no way of knowing: the connection is down.
+    pub fn idle() -> Self {
+        Line {
+            state: LineState::Idle,
+            direction: None,
+            number: None,
+            since: 0,
+        }
+    }
+}
+
 /// What the engine tells the app about. Implementations must not block.
 pub trait Events: Send + Sync + 'static {
     fn state(&self, state: &ConnState);
@@ -64,6 +91,15 @@ pub trait Events: Send + Sync + 'static {
     /// A new inbound message, for notifications.
     fn inbound(&self, message: &Message);
     fn status(&self, status: &DeviceStatus);
+    /// The stored call history changed.
+    fn calls_changed(&self) {}
+    /// The phone's line changed. Idle is also reported when the connection
+    /// ends, so a ringing call is never left on screen by a lost link.
+    fn line(&self, _line: &Line) {}
+    /// A call rang and was not answered, while this PC was connected.
+    fn missed_call(&self, _call: &Call) {}
+    /// What became of a dial or a call action. `error` is `None` on success.
+    fn call_result(&self, _client_id: &str, _error: Option<&str>) {}
 }
 
 #[derive(Debug)]
@@ -77,6 +113,17 @@ pub enum Command {
     /// return the remembered failure).
     Retry {
         client_id: String,
+    },
+    /// Place a call through the phone. Never queued and never replayed: when
+    /// it cannot go out now, it fails.
+    Dial {
+        client_id: String,
+        to: String,
+    },
+    /// Answer or end whatever the phone's line is doing. Never queued either.
+    CallAction {
+        client_id: String,
+        action: CallAction,
     },
     /// Skip the backoff wait, or reconnect after a fingerprint or token problem.
     Reconnect,
@@ -210,6 +257,9 @@ impl Engine {
                 None | Some(Command::Stop) => return false,
                 Some(Command::Reconnect) => return true,
                 Some(other) => {
+                    if self.core.refuse_call_while_offline(&other) {
+                        continue;
+                    }
                     // Queued now, sent on reconnect.
                     if let Err(e) = self.core.queue(other) {
                         log::warn!("could not queue a send: {e}");
@@ -219,7 +269,22 @@ impl Engine {
         }
     }
 
+    /// One connection, from connecting to its end. Whatever ends it, a dial or
+    /// call action still waiting for its result is reported as failed, and the
+    /// line is reported idle: this PC no longer knows what the phone is doing.
     async fn session(&mut self) -> End {
+        let mut pending = Vec::new();
+        let end = self.connected(&mut pending).await;
+        for (client_id, _) in pending {
+            self.core
+                .events
+                .call_result(&client_id, Some("the connection to the phone was lost"));
+        }
+        self.core.events.line(&Line::idle());
+        end
+    }
+
+    async fn connected(&mut self, pending: &mut Vec<(String, Instant)>) -> End {
         // Connecting can take as long as the timeouts allow when the phone has gone
         // quiet. Sends made meanwhile go to the outbox right away, so they show as
         // "Sending" at once and survive a restart; replay_outbox then sends them.
@@ -236,6 +301,9 @@ impl Engine {
                         None | Some(Command::Stop) => return End::Stop,
                         Some(Command::Reconnect) => return End::Reconnect,
                         Some(other) => {
+                            if self.core.refuse_call_while_offline(&other) {
+                                continue;
+                            }
                             if let Err(e) = self.core.queue(other) {
                                 log::warn!("could not queue a send: {e}");
                             }
@@ -264,9 +332,19 @@ impl Engine {
                     None => std::future::pending().await,
                 }
             };
+            let call_deadline = pending.iter().map(|(_, at)| *at).min();
+            let call_wait = async move {
+                match call_deadline {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending().await,
+                }
+            };
             tokio::select! {
                 frame = next_envelope(&mut stream) => match frame {
                     Ok(Some(env)) => {
+                        if let Frame::CallResult { client_id, .. } = &env.frame {
+                            pending.retain(|(id, _)| id != client_id);
+                        }
                         if matches!(env.frame, Frame::Pong) {
                             pong_deadline = None;
                         } else if let Err(e) = self.core.apply(env.frame).await {
@@ -283,12 +361,33 @@ impl Engine {
                     if let Err(e) = send(&mut sink, &Envelope::new(Frame::Ping)).await { return e; }
                 }
                 _ = pong_wait => return End::Retry("the phone stopped answering pings".into()),
+                _ = call_wait => {
+                    let now = Instant::now();
+                    let events = &self.core.events;
+                    pending.retain(|(client_id, at)| {
+                        let waiting = *at > now;
+                        if !waiting {
+                            events.call_result(client_id, Some("the phone did not answer the request"));
+                        }
+                        waiting
+                    });
+                }
                 cmd = self.commands.recv() => match cmd {
                     None | Some(Command::Stop) => {
                         let _ = sink.close().await;
                         return End::Stop;
                     }
                     Some(Command::Reconnect) => return End::Reconnect,
+                    Some(Command::Dial { client_id, to }) => {
+                        pending.push((client_id.clone(), Instant::now() + CALL_RESULT_WITHIN));
+                        let frame = Envelope::new(Frame::Dial { client_id, to });
+                        if let Err(e) = send(&mut sink, &frame).await { return e; }
+                    }
+                    Some(Command::CallAction { client_id, action }) => {
+                        pending.push((client_id.clone(), Instant::now() + CALL_RESULT_WITHIN));
+                        let frame = Envelope::new(Frame::CallAction { client_id, action });
+                        if let Err(e) = send(&mut sink, &frame).await { return e; }
+                    }
                     Some(other) => match self.core.queue(other) {
                         Ok(Some(frame)) => if let Err(e) = send(&mut sink, &frame).await { return e; },
                         Ok(None) => {}
@@ -304,6 +403,60 @@ impl Core {
     fn db<T>(&self, f: impl FnOnce(&mut Store) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
         let mut guard = self.store.lock().unwrap_or_else(|p| p.into_inner());
         f(&mut guard)
+    }
+
+    /// A dial or call action made while there is no connection fails at once.
+    /// Returns true when `cmd` was one of those and has been dealt with.
+    fn refuse_call_while_offline(&self, cmd: &Command) -> bool {
+        let (Command::Dial { client_id, .. } | Command::CallAction { client_id, .. }) = cmd else {
+            return false;
+        };
+        self.events
+            .call_result(client_id, Some("not connected to the phone"));
+        true
+    }
+
+    /// Brings the call history up to the phone's. A phone that does not know
+    /// about calls, or may not read its call log, simply has none to give.
+    async fn sync_calls(&self) -> Result<(), End> {
+        let mut cursor = self.db(|s| s.meta(META_CALLS_CURSOR))?;
+        // History fetched from the very beginning is old news; only calls that
+        // arrive after that count as not yet seen.
+        let mut from_start = cursor.is_none();
+        let mut changed = false;
+        loop {
+            let page = match self.client.calls(cursor.as_deref(), CALLS_PAGE).await {
+                Ok(page) => page,
+                Err(NetError::Refused {
+                    code: ErrorCode::BadCursor,
+                    ..
+                }) if cursor.is_some() => {
+                    self.db(|s| s.delete_meta(META_CALLS_CURSOR))?;
+                    cursor = None;
+                    from_start = true;
+                    continue;
+                }
+                Err(NetError::Refused {
+                    code: ErrorCode::NotFound | ErrorCode::NotPermitted,
+                    ..
+                })
+                | Err(NetError::Status(403 | 404)) => break,
+                Err(e) => return Err(e.into()),
+            };
+            changed |= !self
+                .db(|s| s.upsert_calls(&page.calls, from_start))?
+                .is_empty();
+            self.db(|s| s.set_meta(META_CALLS_CURSOR, &page.next_cursor))?;
+            let more = page.has_more;
+            cursor = Some(page.next_cursor);
+            if !more {
+                break;
+            }
+        }
+        if changed {
+            self.events.calls_changed();
+        }
+        Ok(())
     }
 
     /// Records a send in the outbox. Returns the frame to send now, if connected.
@@ -416,6 +569,7 @@ impl Core {
             self.db(|s| s.replace_contacts(&contacts.contacts))?;
         }
         self.events.threads_changed();
+        self.sync_calls().await?;
         Ok(())
     }
 
@@ -515,12 +669,45 @@ impl Core {
                     }
                 }
             }
+            Frame::CallState {
+                state,
+                direction,
+                number,
+                since,
+            } => self.events.line(&Line {
+                state,
+                direction,
+                number,
+                since,
+            }),
+            Frame::Call { call } => {
+                let new = self.db(|s| s.upsert_calls(std::slice::from_ref(&call), false))?;
+                if !new.is_empty() && call.kind == CallKind::Missed {
+                    self.events.missed_call(&call);
+                }
+                self.events.calls_changed();
+            }
+            Frame::CallResult {
+                client_id,
+                status,
+                error,
+            } => {
+                let error = match status {
+                    CallResultStatus::Ok => None,
+                    CallResultStatus::Failed => {
+                        Some(error.unwrap_or_else(|| "the phone could not do that".into()))
+                    }
+                };
+                self.events.call_result(&client_id, error.as_deref());
+            }
             // Frames a phone does not send, or that were handled already.
             Frame::Hello { .. }
             | Frame::Pong
             | Frame::Ping
             | Frame::Send { .. }
-            | Frame::MarkRead { .. } => {}
+            | Frame::MarkRead { .. }
+            | Frame::Dial { .. }
+            | Frame::CallAction { .. } => {}
         }
         Ok(())
     }

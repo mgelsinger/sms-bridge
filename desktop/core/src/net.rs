@@ -466,6 +466,17 @@ impl PhoneClient {
         .await
     }
 
+    /// Call history, oldest first by id. `None` starts from the beginning.
+    pub async fn calls(&self, cursor: Option<&str>, limit: u32) -> Result<CallsPage, NetError> {
+        self.json_within(
+            "GET",
+            &with_query("/calls", limit, cursor),
+            None,
+            self.history_timeout,
+        )
+        .await
+    }
+
     pub async fn contacts(&self) -> Result<ContactsResponse, NetError> {
         self.json("GET", "/contacts", None).await
     }

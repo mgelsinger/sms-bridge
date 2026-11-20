@@ -61,8 +61,95 @@ pub enum ErrorCode {
     NotFound,
     UnsupportedVersion,
     NotDefaultSmsApp,
+    NotPermitted,
     SendFailed,
     Internal,
+}
+
+/// How a call in the phone's history went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CallKind {
+    /// Inbound and answered.
+    In,
+    /// Placed from the phone, answered or not.
+    Out,
+    Missed,
+    Rejected,
+    Blocked,
+    Voicemail,
+}
+
+impl CallKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CallKind::In => "in",
+            CallKind::Out => "out",
+            CallKind::Missed => "missed",
+            CallKind::Rejected => "rejected",
+            CallKind::Blocked => "blocked",
+            CallKind::Voicemail => "voicemail",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "in" => CallKind::In,
+            "out" => CallKind::Out,
+            "missed" => CallKind::Missed,
+            "rejected" => CallKind::Rejected,
+            "blocked" => CallKind::Blocked,
+            "voicemail" => CallKind::Voicemail,
+            _ => return None,
+        })
+    }
+}
+
+/// What the phone's line is doing. It describes the line, not one call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineState {
+    Idle,
+    Ringing,
+    /// Off the hook. For an outbound call this starts when dialing starts.
+    Active,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CallAction {
+    Answer,
+    /// Decline the ringing call, or hang up the active one.
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CallResultStatus {
+    Ok,
+    Failed,
+}
+
+/// One entry of the phone's call history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Call {
+    /// Opaque, `call:N`. Compare for equality only.
+    pub id: String,
+    /// `None` when the other party withheld the number.
+    pub number: Option<String>,
+    pub kind: CallKind,
+    /// Epoch milliseconds, when the call started ringing or dialing.
+    pub date: u64,
+    pub duration_s: u64,
+}
+
+/// What the phone can do with calls given the permissions it holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CallAbilities {
+    pub history: bool,
+    pub dial: bool,
+    pub answer: bool,
+    pub end: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +205,9 @@ pub struct DeviceStatus {
     pub is_default_sms_app: bool,
     pub uptime_s: u64,
     pub paired_clients: u32,
+    /// Absent on a phone that does not know about calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calls: Option<CallAbilities>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,6 +236,14 @@ pub struct MessagesPage {
 pub struct SyncPage {
     pub protocol_version: u32,
     pub messages: Vec<Message>,
+    pub next_cursor: String,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CallsPage {
+    pub protocol_version: u32,
+    pub calls: Vec<Call>,
     pub next_cursor: String,
     pub has_more: bool,
 }
@@ -242,6 +340,21 @@ pub enum Frame {
         #[serde(default)]
         client_id: Option<String>,
     },
+    CallState {
+        state: LineState,
+        direction: Option<Direction>,
+        number: Option<String>,
+        since: u64,
+    },
+    Call {
+        call: Call,
+    },
+    CallResult {
+        client_id: String,
+        status: CallResultStatus,
+        #[serde(default)]
+        error: Option<String>,
+    },
     // Client to phone.
     Send {
         client_id: String,
@@ -255,4 +368,12 @@ pub enum Frame {
         thread_id: u64,
     },
     Ping,
+    Dial {
+        client_id: String,
+        to: String,
+    },
+    CallAction {
+        client_id: String,
+        action: CallAction,
+    },
 }

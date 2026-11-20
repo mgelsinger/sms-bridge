@@ -3,7 +3,8 @@
 //! here (it lives in Windows Credential Manager).
 
 use crate::protocol::{
-    Contact, Direction, Message, MessageKind, MessageStatus, MmsPart, SendStatus, ThreadSummary,
+    Call, CallKind, Contact, Direction, Message, MessageKind, MessageStatus, MmsPart, SendStatus,
+    ThreadSummary,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -15,7 +16,7 @@ pub type Result<T> = rusqlite::Result<T>;
 /// The schema, one step per version. A store is brought up to date by running
 /// the steps it has not seen, each in its own transaction, so `user_version`
 /// always says exactly which steps are in the file.
-const MIGRATIONS: [&str; 2] = [SCHEMA_V1, SCHEMA_V2];
+const MIGRATIONS: [&str; 3] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
 
 const SCHEMA_V1: &str = "
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -80,6 +81,20 @@ const SCHEMA_V2: &str = "
     END;
     INSERT INTO messages_fts (messages_fts) VALUES ('rebuild');";
 
+/// Version 3: the phone's call history. `seen` is this PC's own note that the
+/// user has looked at the entry; it drives the missed-call count and never
+/// goes back to the phone.
+const SCHEMA_V3: &str = "
+    CREATE TABLE calls (
+        id TEXT PRIMARY KEY,
+        number TEXT,
+        kind TEXT NOT NULL,
+        date INTEGER NOT NULL,
+        duration_s INTEGER NOT NULL,
+        seen INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX calls_by_date ON calls (date DESC);";
+
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
@@ -118,6 +133,20 @@ pub struct MessageView {
     pub status: Option<MessageStatus>,
     pub client_id: Option<String>,
     pub error: Option<String>,
+}
+
+/// A call history entry as the UI shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CallView {
+    pub id: String,
+    /// `None` when the other party withheld the number.
+    pub number: Option<String>,
+    /// The contact's name, when the number belongs to one.
+    pub name: Option<String>,
+    pub kind: CallKind,
+    pub date: u64,
+    pub duration_s: u64,
+    pub seen: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,6 +230,7 @@ impl Store {
     pub fn clear_phone_data(&self) -> Result<()> {
         self.conn.execute_batch(
             "DELETE FROM threads; DELETE FROM messages; DELETE FROM contacts; DELETE FROM outbox;
+             DELETE FROM calls;
              DELETE FROM meta WHERE key NOT LIKE 'pref:%';",
         )
     }
@@ -398,6 +428,79 @@ impl Store {
     pub fn outbox_remove(&self, client_id: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM outbox WHERE client_id = ?1", [client_id])?;
+        Ok(())
+    }
+
+    // Calls -----------------------------------------------------------------
+
+    /// Stores call history entries and returns the ids that were not here
+    /// before. `seen` is given to new entries only: history fetched when the
+    /// phone is first paired is old news, a call that arrives later is not.
+    pub fn upsert_calls(&mut self, calls: &[Call], seen: bool) -> Result<Vec<String>> {
+        let tx = self.conn.transaction()?;
+        let mut new = Vec::new();
+        {
+            let mut exists = tx.prepare("SELECT 1 FROM calls WHERE id = ?1")?;
+            let mut insert = tx.prepare(
+                "INSERT INTO calls (id, number, kind, date, duration_s, seen) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(id) DO UPDATE SET number = excluded.number, kind = excluded.kind,
+                     date = excluded.date, duration_s = excluded.duration_s",
+            )?;
+            for call in calls {
+                if !exists.exists([&call.id])? {
+                    new.push(call.id.clone());
+                }
+                insert.execute(params![
+                    call.id,
+                    call.number,
+                    call.kind.as_str(),
+                    call.date,
+                    call.duration_s,
+                    seen
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(new)
+    }
+
+    /// Call history, newest first. `before` pages back by date.
+    pub fn calls(&self, before: Option<u64>, limit: u32) -> Result<Vec<CallView>> {
+        let names = self.names()?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, number, kind, date, duration_s, seen FROM calls
+             WHERE ?1 IS NULL OR date < ?1 ORDER BY date DESC, id DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![before, limit], |r| {
+            let number: Option<String> = r.get(1)?;
+            let kind: String = r.get(2)?;
+            Ok(CallView {
+                id: r.get(0)?,
+                name: number.as_ref().and_then(|n| names.get(n).cloned()),
+                number,
+                // A kind from a newer phone that this build does not know is shown as a plain inbound call.
+                kind: CallKind::parse(&kind).unwrap_or(CallKind::In),
+                date: r.get(3)?,
+                duration_s: r.get(4)?,
+                seen: r.get(5)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Missed calls the user has not looked at yet.
+    pub fn missed_calls_unseen(&self) -> Result<u32> {
+        self.conn.query_row(
+            "SELECT COUNT(*) FROM calls WHERE kind = 'missed' AND seen = 0",
+            [],
+            |r| r.get(0),
+        )
+    }
+
+    /// The user opened the call history.
+    pub fn mark_calls_seen(&self) -> Result<()> {
+        self.conn
+            .execute("UPDATE calls SET seen = 1 WHERE seen = 0", [])?;
         Ok(())
     }
 
@@ -1066,7 +1169,8 @@ mod tests {
             .conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .expect("version");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
+        assert!(s.calls(None, 10).expect("calls").is_empty());
         assert_eq!(found(&s, "pizza"), ["sms:1"]);
         assert_eq!(s.message_count().expect("count"), 2, "nothing was lost");
         assert_eq!(
@@ -1098,6 +1202,101 @@ mod tests {
         assert_index_is_sound(&s);
         drop(s);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn call(id: &str, number: Option<&str>, kind: CallKind, date: u64) -> Call {
+        Call {
+            id: id.into(),
+            number: number.map(Into::into),
+            kind,
+            date,
+            duration_s: if kind == CallKind::Missed { 0 } else { 60 },
+        }
+    }
+
+    #[test]
+    fn calls_are_listed_newest_first_with_contact_names() {
+        let mut s = store();
+        let new = s
+            .upsert_calls(
+                &[
+                    call("call:1", Some("+15855550101"), CallKind::In, 100),
+                    call("call:2", Some("+15855550199"), CallKind::Out, 300),
+                    call("call:3", None, CallKind::Rejected, 200),
+                ],
+                true,
+            )
+            .expect("upsert");
+        assert_eq!(new, ["call:1", "call:2", "call:3"]);
+        let listed = s.calls(None, 10).expect("calls");
+        assert_eq!(
+            listed.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["call:2", "call:3", "call:1"]
+        );
+        assert_eq!(listed[2].name.as_deref(), Some("Alex Rivera"));
+        assert_eq!(listed[0].name, None, "a number with no contact has no name");
+        assert_eq!(listed[1].number, None, "a withheld number stays withheld");
+        let older = s.calls(Some(200), 10).expect("page");
+        assert_eq!(older.len(), 1);
+        assert_eq!(older[0].id, "call:1");
+    }
+
+    #[test]
+    fn a_call_seen_twice_is_stored_once_and_keeps_its_seen_mark() {
+        let mut s = store();
+        let missed = call("call:7", Some("+15855550101"), CallKind::Missed, 100);
+        assert_eq!(
+            s.upsert_calls(std::slice::from_ref(&missed), false)
+                .expect("first"),
+            ["call:7"]
+        );
+        assert_eq!(s.missed_calls_unseen().expect("count"), 1);
+        s.mark_calls_seen().expect("seen");
+        assert_eq!(s.missed_calls_unseen().expect("count"), 0);
+        // The same entry again, as catch-up after a live frame delivers it.
+        let again = s
+            .upsert_calls(std::slice::from_ref(&missed), false)
+            .expect("second");
+        assert!(again.is_empty(), "not new the second time");
+        assert_eq!(s.calls(None, 10).expect("calls").len(), 1);
+        assert_eq!(
+            s.missed_calls_unseen().expect("count"),
+            0,
+            "seen stays seen"
+        );
+    }
+
+    #[test]
+    fn only_missed_calls_nobody_looked_at_are_counted() {
+        let mut s = store();
+        s.upsert_calls(
+            &[call("call:1", Some("+15855550101"), CallKind::Missed, 100)],
+            true,
+        )
+        .expect("history from the first sync");
+        s.upsert_calls(
+            &[
+                call("call:2", Some("+15855550101"), CallKind::Missed, 200),
+                call("call:3", Some("+15855550101"), CallKind::In, 300),
+                call("call:4", Some("+15855550101"), CallKind::Rejected, 400),
+            ],
+            false,
+        )
+        .expect("calls that came in later");
+        assert_eq!(s.missed_calls_unseen().expect("count"), 1);
+    }
+
+    #[test]
+    fn pairing_another_phone_forgets_the_call_history() {
+        let mut s = store();
+        s.upsert_calls(
+            &[call("call:1", Some("+15855550101"), CallKind::Missed, 100)],
+            false,
+        )
+        .expect("upsert");
+        s.clear_phone_data().expect("clear");
+        assert!(s.calls(None, 10).expect("calls").is_empty());
+        assert_eq!(s.missed_calls_unseen().expect("count"), 0);
     }
 
     #[test]

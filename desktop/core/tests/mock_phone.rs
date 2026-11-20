@@ -89,6 +89,16 @@ async fn pair_read_and_send_against_the_mock_phone() {
         panic!("hello first")
     };
     assert_eq!(sync_cursor, start.next_cursor);
+    // A phone that knows about calls says what its line is doing right after hello.
+    assert!(matches!(
+        next_frame(&mut ws).await,
+        Frame::CallState {
+            state: LineState::Idle,
+            direction: None,
+            number: None,
+            ..
+        }
+    ));
     ws.send(WsMessage::text(
         serde_json::to_string(&Envelope::new(Frame::Ping)).expect("json"),
     ))
