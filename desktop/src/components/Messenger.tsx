@@ -8,7 +8,15 @@ import styles from "./Messenger.module.css";
 
 type Selection = { kind: "thread"; id: number } | { kind: "new" } | null;
 
-export function Messenger({ paired, conn, onUnpaired }: { paired: Paired; conn: ConnState | null; onUnpaired: () => void }) {
+/** Calling the other person of a conversation. Absent where the window has no calls. */
+export interface CallFromThread {
+  /** Why a call cannot be placed right now, or null when it can. */
+  blocked: string | null;
+  /** Places the call. Only ever run from the user's click. */
+  dial: (number: string) => void;
+}
+
+export function Messenger({ paired, conn, onUnpaired, call }: { paired: Paired; conn: ConnState | null; onUnpaired: () => void; call?: CallFromThread }) {
   const [threads, setThreads] = useState<ThreadView[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
   const [query, setQuery] = useState("");
@@ -122,7 +130,7 @@ export function Messenger({ paired, conn, onUnpaired }: { paired: Paired; conn: 
             }}
           />
         ) : current ? (
-          <Conversation key={current.id} thread={current} />
+          <Conversation key={current.id} thread={current} call={call} />
         ) : (
           <div className={styles.placeholder}>Choose a conversation, or press Ctrl+N to start one.</div>
         )}
@@ -148,7 +156,7 @@ function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; select
   );
 }
 
-function Conversation({ thread }: { thread: ThreadView }) {
+function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThread }) {
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [more, setMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -208,8 +216,21 @@ function Conversation({ thread }: { thread: ThreadView }) {
   return (
     <div className={styles.conversation}>
       <header className={styles.header}>
-        <div className={styles.headerTitle}>{thread.title}</div>
-        {thread.title !== thread.participants.join(", ") && <div className={styles.headerSub}>{thread.participants.join(", ")}</div>}
+        <div className={styles.headerText}>
+          <div className={styles.headerTitle}>{thread.title}</div>
+          {thread.title !== thread.participants.join(", ") && <div className={styles.headerSub}>{thread.participants.join(", ")}</div>}
+        </div>
+        {call && !group && thread.participants[0] && cleanNumber(thread.participants[0]) && (
+          <button
+            className={styles.callBtn}
+            disabled={call.blocked !== null}
+            title={call.blocked ?? "Your phone places the call and you talk on the phone"}
+            aria-label={`Call ${thread.title}`}
+            onClick={() => call.dial(thread.participants[0]!)}
+          >
+            Call
+          </button>
+        )}
       </header>
       <div className={styles.messages} ref={scroller} onScroll={() => void onScroll()}>
         {!more && <div className={styles.dayLabel}>Start of conversation</div>}
@@ -352,9 +373,12 @@ function StatusBar({ paired, conn, device, onUnpaired }: { paired: Paired; conn:
   const [popups, setPopups] = useState(false);
   // Starting with Windows is the user's call too: off until switched on here.
   const [autostart, setAutostart] = useState(false);
+  // A ringing call cannot wait for the taskbar to be looked at: its pop-up is on until switched off.
+  const [callPopups, setCallPopups] = useState(true);
   useEffect(() => {
     api.popupsEnabled().then(setPopups).catch(() => {});
     api.autostartEnabled().then(setAutostart).catch(() => {});
+    api.callPopupsEnabled().then(setCallPopups).catch(() => {});
   }, []);
   const label = (() => {
     switch (conn?.state) {
@@ -397,6 +421,17 @@ function StatusBar({ paired, conn, device, onUnpaired }: { paired: Paired; conn:
             }}
           >
             Pop-up notifications: {popups ? "on" : "off"}
+          </button>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={callPopups}
+            onClick={() => {
+              setMenu(false);
+              const next = !callPopups;
+              void api.setCallPopups(next).then(() => setCallPopups(next));
+            }}
+          >
+            Pop-ups for calls: {callPopups ? "on" : "off"}
           </button>
           <button
             role="menuitemcheckbox"

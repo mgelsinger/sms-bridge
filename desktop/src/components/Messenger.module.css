@@ -182,9 +182,25 @@
   min-height: 0;
 }
 .header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
+}
+.headerText {
+  flex: 1;
+  min-width: 0;
+}
+.callBtn {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  padding: 4px 14px;
+}
+.callBtn:hover:enabled {
+  background: var(--hover);
 }
 .headerTitle {
   font-weight: 600;

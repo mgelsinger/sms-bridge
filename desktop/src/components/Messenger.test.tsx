@@ -18,6 +18,8 @@ vi.mock("../lib/api", async (original) => {
       setPopups: vi.fn().mockResolvedValue(undefined),
       autostartEnabled: vi.fn().mockResolvedValue(false),
       setAutostart: vi.fn().mockResolvedValue(undefined),
+      callPopupsEnabled: vi.fn().mockResolvedValue(true),
+      setCallPopups: vi.fn().mockResolvedValue(undefined),
       reconnect: vi.fn().mockResolvedValue(undefined),
       search: vi.fn().mockResolvedValue([]),
       messages: vi.fn().mockResolvedValue([]),
@@ -114,5 +116,43 @@ describe("status menu", () => {
     fireEvent.click(screen.getByLabelText("Connection options"));
     expect(await screen.findByRole("menuitemcheckbox", { name: "Start with Windows: off" })).toBeTruthy();
     alert.mockRestore();
+  });
+});
+
+describe("calling from a conversation", () => {
+  const thread = (id: number, title: string, participants: string[]) => ({ id, title, participants, snippet: null, date: 0, unread: 0 });
+
+  async function open(title: string, call: { blocked: string | null; dial: (n: string) => void }) {
+    vi.mocked(api.threads).mockResolvedValue([thread(1, "Alex Rivera", ["+15855550101"]), thread(2, "Alex Rivera, Sam", ["+15855550101", "+15855550103"]), thread(3, "ACME", ["ACME"])]);
+    render(<Messenger paired={paired} conn={{ state: "connected", device_name: "Pixel" }} onUnpaired={() => {}} call={call} />);
+    fireEvent.click(await screen.findByText(title));
+  }
+
+  it("dials the other person once, with their number", async () => {
+    const dial = vi.fn();
+    await open("Alex Rivera", { blocked: null, dial });
+    fireEvent.click(await screen.findByRole("button", { name: "Call Alex Rivera" }));
+    expect(dial).toHaveBeenCalledTimes(1);
+    expect(dial).toHaveBeenCalledWith("+15855550101");
+  });
+
+  it("cannot be used while calls are blocked, and says why", async () => {
+    const dial = vi.fn();
+    await open("Alex Rivera", { blocked: "The phone is already in a call", dial });
+    const button = await screen.findByRole("button", { name: "Call Alex Rivera" });
+    expect(button).toHaveProperty("disabled", true);
+    expect(button.getAttribute("title")).toBe("The phone is already in a call");
+    fireEvent.click(button);
+    expect(dial).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a group", "Alex Rivera, Sam"],
+    ["a sender that is not a number", "ACME"],
+  ])("is not offered for %s", async (_what, title) => {
+    await open(title, { blocked: null, dial: vi.fn() });
+    // The conversation is on screen, so a missing button is not just a missing header.
+    expect(document.querySelector("header")?.textContent).toContain(title);
+    expect(screen.queryByRole("button", { name: /^Call / })).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, events, type ConnState, type Paired } from "./lib/api";
 import { useCalls } from "./lib/useCalls";
+import { callsUnavailable } from "./lib/calls";
 import { PairScreen } from "./components/PairScreen";
 import { Messenger } from "./components/Messenger";
 import { Calls } from "./components/Calls";
@@ -64,9 +65,27 @@ function PairedWindow({ paired, conn, onUnpaired }: { paired: Paired; conn: Conn
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Why a call cannot be started from a conversation right now, if it cannot.
+  const blocked =
+    callsUnavailable(calls.connected, calls.abilities) ??
+    (calls.abilities?.dial !== true
+      ? "The phone does not allow placing calls yet"
+      : calls.line.state !== "idle"
+        ? "The phone is already in a call"
+        : calls.pending
+          ? "Asking the phone…"
+          : null);
+  // The Calls view and the call bar show these themselves; over the texts nothing else would.
+  const notice = view === "texts" && calls.line.state === "idle" ? (calls.pending ? "Asking the phone to call…" : calls.error && `Call not placed: ${calls.error}`) : null;
+
   return (
     <div className={styles.shell}>
       <CallBanner calls={calls} />
+      {notice && (
+        <div className={styles.notice} role="status">
+          {notice}
+        </div>
+      )}
       <div className={styles.body}>
         <nav className={styles.rail} aria-label="Sections">
           <button className={view === "texts" ? styles.current : ""} aria-pressed={view === "texts"} onClick={() => setView("texts")}>
@@ -83,7 +102,7 @@ function PairedWindow({ paired, conn, onUnpaired }: { paired: Paired; conn: Conn
         </nav>
         {/* Texts stay mounted while calls are shown, so the open conversation and a half-typed message survive the switch. */}
         <div className={styles.view} hidden={view !== "texts"}>
-          <Messenger paired={paired} conn={conn} onUnpaired={onUnpaired} />
+          <Messenger paired={paired} conn={conn} onUnpaired={onUnpaired} call={{ blocked, dial: calls.dial }} />
         </div>
         {view === "calls" && (
           <div className={styles.view}>
