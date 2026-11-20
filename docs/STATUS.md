@@ -2,7 +2,7 @@
 
 Read this first in a new session. Update it whenever the state below changes.
 
-Last updated: 2026-11-14.
+Last updated: 2026-11-20.
 
 ## Where things stand
 
@@ -29,6 +29,10 @@ Last updated: 2026-11-14.
   build upgrades its local store on first start; pairing is kept on both
   sides. The phone needs the new APK for the faster history pages, the PC
   the new installer for "Start with Windows" and the new search.
+- Phone calls were added to the plan on 2026-11-20 at Mickey's request, as
+  phases 6 (calls over the bridge, voice on the phone) and 7 (voice on the PC
+  over Bluetooth hands-free). Plan only, no code. See PLAN.md, "Calls", and
+  the open item below. Scope stays Android and Windows.
 - The agent reaches the phone over adb Wireless debugging, which Mickey turns
   on and pairs himself. Reading the app's status and installing builds is
   fine; permission prompts, pairing approval, and sending texts are his.
@@ -112,6 +116,14 @@ Last updated: 2026-11-14.
   is marked `read_restriction = 65536` and withheld from that app. The phone
   did not do this as of 2026-11-14. If texts sent from the PC ever stop
   showing as one matched bubble after a phone update, look here first.
+- Calls: the experiment that opens phase 6 is not run. It needs Mickey at the
+  desk: pair the phone with the PC over Bluetooth in Windows Settings, then
+  place one call himself while a throwaway program on the PC watches. The
+  program is not written yet. Known so far (2026-11-20, no phone involved):
+  the PC has a Bluetooth radio, no phone is paired to it, and Windows' calling
+  classes answer from an unpackaged process. Whether to run it before the
+  phase 4 week is over is Mickey's call; it touches neither installed app.
+  The agent never places or answers a call on his phone.
 - The Windows installer is unsigned and dev APKs use a public dev key.
   Signed releases are not started; see the next section.
 

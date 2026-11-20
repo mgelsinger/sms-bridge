@@ -24,7 +24,9 @@ Must never do:
 - Accept connections without pairing, or accept plaintext connections
 - Require root or a custom ROM
 
-Targets: Android 10 (API 29) and up on the phone; Windows 11 on the PC. Sideload the APK with adb; Play Store distribution is out of scope because Play policy blocks SMS permissions for apps that are not the default SMS handler.
+Added 2026-11-20: the goal now also covers phone calls, placed and answered from the PC. Texts and calls are "the standard functions of the phone" (Mickey), and that is the scope; see "Calls" below. The project keeps its name.
+
+Targets: Android 10 (API 29) and up on the phone; Windows 11 on the PC. Android and Windows only: no iOS, macOS, Linux, or web client. Sideload the APK with adb; Play Store distribution is out of scope because Play policy blocks SMS permissions for apps that are not the default SMS handler.
 
 ## Architecture
 
@@ -220,6 +222,9 @@ Each phase ends in a tagged commit and a working demo. Claude Code should finish
 | 2 PC read | Tauri + pairing, SQLite sync, threads + view, toasts | Live toast on PC |
 | 3 Send + reply | SmsManager send, outbox + dedupe, composer, delivery state | Daily driver |
 | 4 Harden | Doze + reconnect, MMS + groups, search + tray, signed releases | One week of daily use |
+| 5 Default SMS app (optional) | Mark read on the phone, send MMS, dual SIM; see "Known limitations" | Not scheduled |
+| 6 Calls over the bridge | Ringing pop-up, call history, dial and hang up from the PC; the voice stays on the phone | A day of calls started and declined from the PC |
+| 7 Calls on the PC | Talk through the PC's microphone and speakers over Bluetooth hands-free | A week of calls taken at the desk |
 
 **Phase 0, scaffold.** Monorepo with the layout above, CI that builds both apps and validates `protocol/fixtures` against `protocol/schema`, and `tools/mock-phone` serving the fixtures over the real protocol so desktop work never waits on the phone. Accept when CI is green and `mock-phone` answers `GET /threads` with fixture data.
 
@@ -230,6 +235,58 @@ Each phase ends in a tagged commit and a working demo. Claude Code should finish
 **Phase 3, send and reply.** `SmsManager` sending with sent and delivered intents, outbox with `client_id` dedupe, composer, new-message flow, delivery state in the bubble. Accept when a message typed on the PC arrives on another phone, shows delivered on the PC, appears in the phone's own messaging app, and a forced disconnect mid-send produces exactly one copy after reconnect.
 
 **Phase 4, harden and polish.** Boot start, Doze survival test (phone idle 1 hour, inbound still pushes), reconnect backoff, MMS image parts and group threads, FTS5 search, tray and autostart, signed APK and Windows installer via GitHub Releases. Accept when the user runs it as the daily driver for a week without touching the phone to text.
+
+**Phase 6, calls over the bridge.** Call events, call history, and dial, answer, decline, and hang up as new protocol messages over the existing pinned link. Starts with the desk experiment described under "Calls", which also decides whether phase 7 exists. Accept when a call to the phone shows a pop-up on the PC with the caller's name within 2 seconds, Decline on the PC ends it, a call started from the PC rings the other phone, and the call history on the PC matches the phone's.
+
+**Phase 7, calls on the PC.** The PC becomes the phone's Bluetooth hands-free device, so a call can be answered, held, and ended at the desk and heard through the PC's audio devices. Accept when Mickey takes and places calls at the desk for a week without picking up the phone.
+
+## Calls
+
+Added 2026-11-20. Phases 6 and 7 follow phase 4's gate; phase 5 stays optional and can come before or after them.
+
+**Why two phases.** Android gives an ordinary app the facts about a call and a few ways to steer it, and never the voice. Capturing call audio needs `CAPTURE_AUDIO_OUTPUT`, which only system apps hold, and being the default phone app does not grant it either. So the voice cannot travel over the bridge. The route that works is the one car kits and Windows Phone Link use: Bluetooth Hands-Free Profile, with the PC as the hands-free unit. Phase 6 is everything that fits the bridge as it is and works anywhere on the Wi-Fi. Phase 7 adds the voice and works only within Bluetooth range.
+
+**The experiment that comes first.** A throwaway Windows program, not part of either app, run at the desk with the phone paired to the PC over Bluetooth in Windows Settings. It answers, in order:
+
+1. Does `Windows.ApplicationModel.Calls.PhoneLineTransportDevice` list the phone, and do `RequestAccessAsync`, `RegisterApp`, and `Connect` succeed from an app installed the way ours is (unpackaged, per user)? Checked on 2026-11-20 without the phone: the classes load and answer from an unpackaged process, and the PC has a Bluetooth radio. Access to a real device is the open part.
+2. With Mickey placing a call himself: does the PC see it, carry the audio both ways, and hang it up?
+3. Does an incoming call reach the program with the caller's number?
+4. Does it work with Phone Link absent or signed out, and with no Microsoft account involved?
+
+If 1 or 2 fails, phase 7 is dropped or becomes "needs a packaged build" and the plan says so. If they pass, phase 7 is as written. The same sitting checks, on the phone, whether `TelecomManager.placeCall`, `endCall`, and `acceptRingingCall` work from the foreground service on Android 17. The last two have been deprecated since Android 10; if they are gone, the supported route is the companion-device association that watches use (`MANAGE_ONGOING_CALLS`), and that is looked into then.
+
+**Phone side, phase 6.**
+
+- Permissions, each asked for and explained on the settings screen like the others: `READ_CALL_LOG` (call history, and the caller's number while ringing), `CALL_PHONE` (dial), `ANSWER_PHONE_CALLS` (answer, decline, hang up). `READ_PHONE_STATE` is already held. The call features stay off until these are granted; texts do not depend on them
+- Call state from `TelephonyCallback` (API 31 and up) or `PhoneStateListener` (API 29 and 30), and the number from the `PHONE_STATE` broadcast. History from `CallLog.Calls`, with a `ContentObserver` so calls made on the phone itself reach the PC, deduped by the provider `_id` as messages are
+- Dial with `TelecomManager.placeCall`; the phone's own call screen appears and the call is an ordinary one, in the phone's own history
+- No silencing of the ringer: that needs the default phone app role. Declining is possible, silencing is not
+- The app does not become the default phone app, for the same reason it is not the default SMS app
+
+**Protocol, phase 6.** Spec, schemas, and fixtures first, in their own commit, as always. Sketch:
+
+| Where | Type | Payload |
+| --- | --- | --- |
+| REST | `GET /calls?since_id=&limit=` | Call history entries: id, number, direction (`in`, `out`, `missed`, `rejected`), date, duration |
+| Phone to PC | `call` | `{call_id, state: ringing or dialing or active or held or ended, direction, number, date}`; when ended, the history entry's id |
+| PC to phone | `dial` | `{client_id, to}` |
+| PC to phone | `call_action` | `{call_id, action: answer or decline or end}` |
+| Phone to PC | `dial_result`, `call_action_result` | `{client_id or call_id, status: ok or failed, error?}` |
+
+`GET /status` gains a `calls` field saying which of these the phone can do with the permissions it has, so the PC shows only buttons that work. A PC or phone that does not know these messages keeps working for texts.
+
+**PC side, phase 6.** A Calls view beside the conversations (history, grouped by contact, with a Call button), a Call button in the conversation header, a dial pad (Ctrl+D), and a pop-up for a ringing call with the contact name and Decline. An Answer button appears only once phase 7 can carry the voice, or says plainly that the call will be answered on the phone's speaker. Calls are stored in the SQLite mirror as their own table and migration step. A missed call lights the taskbar dot like an unread text.
+
+**PC side, phase 7.** `Windows.ApplicationModel.Calls` through Microsoft's `windows` crate: register for the paired phone's line, answer, end, hold, mute, send keypad tones, and choose the microphone and speakers. Bluetooth pairing is done in Windows Settings by the user, not by the app. When the phone is out of Bluetooth range the app falls back to phase 6 behaviour and says so. The Bluetooth link uses Bluetooth's own pairing and encryption, not the pinned certificate; it still reaches nothing but the paired phone.
+
+**Rules for calls.**
+
+- A call is only ever placed by a person clicking Call or pressing Enter in the dial pad. Nothing dials on reconnect, retry, or replay: a `dial` is never kept in an outbox, and one that does not reach the phone fails visibly
+- The PC does not dial emergency numbers; it says to use the phone
+- Numbers and names in logs follow the rule for message bodies: not at the default level
+- The agent never places or answers a call on Mickey's phone. Call tests run on the emulator (`adb emu gsm call <number>`, `gsm accept`, `gsm cancel`); calls on the real phone are his
+
+**Wanted later, not scheduled.** Mickey: "the more functionality the better", within what a phone does. Candidates once calls work: a second call and switching between two, call history search, contact pictures, a ringtone and ring device choice on the PC, and from phase 5 sending pictures, marking read on the phone, and choosing the SIM. Voicemail is probably out of reach without being the default phone app; check before promising it.
 
 ## Testing strategy
 

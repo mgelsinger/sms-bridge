@@ -3,6 +3,46 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Calls, 2026-11-20
+
+**Phone calls are in scope, as phases 6 and 7.** Mickey asked for it on
+2026-11-20: place and receive calls and texts from the PC, "just the standard
+functions of the phone", "the more functionality the better", Android and
+Windows only. PLAN.md has the detail under "Calls". No code yet.
+
+**Two phases, because the voice cannot use the bridge.** An Android app that
+is not part of the system cannot read or write call audio, default phone app
+or not. Phase 6 carries what the bridge can: who is calling, the call history,
+and dial, answer, decline, hang up, with the voice staying on the phone.
+Phase 7 makes the PC the phone's Bluetooth hands-free device through Windows'
+own calling API, which is how the voice reaches the PC. Relaying audio through
+the phone's speaker and microphone was not considered further.
+
+**Bluetooth is accepted as a second link to the phone.** It is paired in
+Windows Settings and protected by Bluetooth's own encryption, not by the
+pinned certificate. It reaches only the paired phone, so the rule "no network
+calls to anything but the paired phone" holds. Mickey has not been asked about
+this point on its own; raise it when phase 7 starts.
+
+**An experiment comes before either phase.** Whether an app installed like
+ours may use `PhoneLineTransportDevice` on a real paired phone is not known.
+Checked on this PC on 2026-11-20, without the phone: the calling classes load
+and answer from an unpackaged process (device selector and call store both
+fine), and the PC has an Intel Bluetooth radio with no phone paired to it. The
+rest needs the phone paired over Bluetooth and Mickey placing a call.
+
+**The app does not become the default phone app.** Same reasoning as for SMS.
+The price is that the ringer cannot be silenced from the PC, and that answering
+and hanging up rest on two `TelecomManager` calls deprecated since Android 10,
+to be checked on Android 17 in the experiment.
+
+**A call is never retried.** A text that fails to reach the phone waits in the
+outbox and is replayed. A `dial` is not: placing a call minutes late, when the
+link comes back, is worse than not placing it.
+
+**The agent does not place or answer calls on Mickey's phone**, by extension
+of what he said about texts from his number. Emulator only.
+
 ## Phase 4, 2026-11-14
 
 **A page of history costs three provider queries, plus one per MMS only in
