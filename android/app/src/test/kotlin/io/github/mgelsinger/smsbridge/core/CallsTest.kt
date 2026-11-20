@@ -151,6 +151,8 @@ class CallDeskTest {
         line.report(Hook.IDLE, null)
         assertEquals(CallResultStatus.OK to null, shape(dial(1, ALEX)))
         assertEquals(1, phone.dialed.size)
+        assertEquals(1, logs.count { it == "dial handed to the phone" }, "the log does not claim a second dial")
+        assertEquals("dial request repeated, answered as before and not acted on again", logs.last())
         clock += 23 * 60 * 60 * 1000L
         dial(1, ALEX)
         assertEquals(1, phone.dialed.size, "still remembered within the day")

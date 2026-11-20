@@ -175,7 +175,7 @@ class CallDesk(
         if (SendValidation.UUID_V4.matches(frame.clientId)) null else "client_id must be a lowercase UUID v4"
 
     @Synchronized
-    fun dial(frame: DialFrame): CallResultFrame = once(frame.clientId) {
+    fun dial(frame: DialFrame): CallResultFrame = once(frame.clientId, "dial") {
         val number = frame.to.filterNot { it in SEPARATORS }
         val refusal = when {
             !phone.abilities().dial -> "the phone app may not place calls"
@@ -187,10 +187,10 @@ class CallDesk(
         if (refusal != null) return@once refusal
         line.expectOutbound(frame.to)
         phone.dial(number).also { if (it != null) line.forgetExpected() }
-    }.also { log(if (it.status == CallResultStatus.OK) "dial handed to the phone" else "dial refused: ${it.error}") }
+    }
 
     @Synchronized
-    fun act(frame: CallActionFrame): CallResultFrame = once(frame.clientId) {
+    fun act(frame: CallActionFrame): CallResultFrame = once(frame.clientId, frame.action.name.lowercase()) {
         val abilities = phone.abilities()
         val state = line.current().state
         when (frame.action) {
@@ -207,9 +207,6 @@ class CallDesk(
                 else -> phone.end()
             }
         }
-    }.also {
-        val what = frame.action.name.lowercase()
-        log(if (it.status == CallResultStatus.OK) "$what handed to the phone" else "$what refused: ${it.error}")
     }
 
     /**
@@ -227,12 +224,16 @@ class CallDesk(
         return line.current().state == LineState.RINGING
     }
 
-    /** Runs [attempt] unless this `client_id` was answered in the last 24 hours. */
-    private fun once(clientId: String, attempt: () -> String?): CallResultFrame {
+    /** Runs [attempt] unless this `client_id` was answered in the last 24 hours. The log never names a number. */
+    private fun once(clientId: String, what: String, attempt: () -> String?): CallResultFrame {
         val at = now()
         answered.entries.removeIf { at - it.value.second > REMEMBER_MS }
-        answered[clientId]?.let { return it.first }
+        answered[clientId]?.let {
+            log("$what request repeated, answered as before and not acted on again")
+            return it.first
+        }
         val error = attempt()
+        log(if (error == null) "$what handed to the phone" else "$what refused: $error")
         val result = CallResultFrame(
             clientId = clientId,
             status = if (error == null) CallResultStatus.OK else CallResultStatus.FAILED,
