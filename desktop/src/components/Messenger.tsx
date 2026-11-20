@@ -3,7 +3,8 @@ import { api, errorText, events, type ConnState, type DeviceStatus, type Message
 import { cleanNumber, dayLabel, listTime, sameDay } from "../lib/format";
 import { threadMatches } from "../lib/search";
 import { Composer } from "./Composer";
-import { MmsImage } from "./MmsImage";
+import { Attachment } from "./Attachment";
+import { placeReactions } from "../lib/reactions";
 import styles from "./Messenger.module.css";
 
 type Selection = { kind: "thread"; id: number } | { kind: "new" } | null;
@@ -179,7 +180,9 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
   }, [load, thread.id]);
 
   // Newest at the bottom; keep the view pinned there as messages arrive.
-  const ordered = useMemo(() => [...messages].reverse(), [messages]);
+  // iPhone reactions sent as texts are shown on the message they name instead.
+  const reactions = useMemo(() => placeReactions(messages, (m) => (m.direction === "out" ? "You" : m.sender_name ?? m.address)), [messages]);
+  const ordered = useMemo(() => [...messages].reverse().filter((m) => !reactions.hidden.has(m.id)), [messages, reactions]);
   useEffect(() => {
     const el = scroller.current;
     if (el && !loadingOlder.current) el.scrollTop = el.scrollHeight;
@@ -239,7 +242,7 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
           return (
             <div key={m.id}>
               {(!prev || !sameDay(prev.date, m.date)) && <div className={styles.dayLabel}>{dayLabel(m.date)}</div>}
-              <Bubble message={m} showSender={group && m.direction === "in" && prev?.address !== m.address} onError={setError} />
+              <Bubble message={m} showSender={group && m.direction === "in" && prev?.address !== m.address} reactions={reactions.byMessage.get(m.id) ?? []} onError={setError} />
             </div>
           );
         })}
@@ -266,7 +269,7 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
   );
 }
 
-function Bubble({ message: m, showSender, onError }: { message: MessageView; showSender: boolean; onError: (e: string) => void }) {
+function Bubble({ message: m, showSender, reactions, onError }: { message: MessageView; showSender: boolean; reactions: { emoji: string; from: string }[]; onError: (e: string) => void }) {
   const out = m.direction === "out";
   const time = new Date(m.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const status = out ? statusText(m) : null;
@@ -275,9 +278,20 @@ function Bubble({ message: m, showSender, onError }: { message: MessageView; sho
       <div className={styles.bubbleWrap}>
         {showSender && <div className={styles.sender}>{m.sender_name ?? m.address}</div>}
         <div className={`${styles.bubble} ${out ? styles.bubbleOut : styles.bubbleIn} ${m.status === "failed" ? styles.failed : ""}`}>
-          {m.parts.map((p) => (p.content_type.startsWith("image/") ? <MmsImage key={p.part_id} part={p} /> : <div key={p.part_id} className={styles.attachment}>{p.name ?? p.content_type}</div>))}
+          {m.parts.map((p) => (
+            <Attachment key={p.part_id} part={p} />
+          ))}
           {m.body && <div className={styles.body}>{m.body}</div>}
         </div>
+        {reactions.length > 0 && (
+          <div className={styles.reactions} aria-label="Reactions">
+            {reactions.map((r) => (
+              <span key={r.emoji + r.from} className={styles.reaction} title={r.from}>
+                {r.emoji}
+              </span>
+            ))}
+          </div>
+        )}
         <div className={styles.meta}>
           {time}
           {status && <span className={m.status === "failed" ? styles.failedText : undefined}> · {status}</span>}

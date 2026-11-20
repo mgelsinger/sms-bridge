@@ -296,6 +296,35 @@
   font-style: italic;
   padding: 2px 0;
 }
+.attachmentBox {
+  margin: 2px 0;
+}
+.attachmentActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+.attachmentNote {
+  opacity: 0.8;
+}
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: -6px;
+  margin-bottom: 2px;
+  position: relative;
+}
+.reaction {
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
 .error {
   color: var(--danger);
   padding: 6px 18px;
