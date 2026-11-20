@@ -49,8 +49,13 @@ function loadState() {
     maxSms,
     maxMms,
     nextPartId: 9000,
+    calls: readFixture("calls-page", "default").calls.map((c) => ({ ...c })),
+    line: { state: "idle", direction: null, number: null, since: Date.now() },
   };
 }
+
+// Numbers the mock treats as emergency numbers. A real phone asks its telephony service.
+const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119"]);
 
 function idNumber(id) {
   const [kind, n] = id.split(":");
@@ -70,6 +75,8 @@ export async function startMockPhone(options = {}) {
     deliveryDelayMs: 800,
     failTo: [],
     readDelayMs: 0,
+    // false makes this a phone from before calls: no `calls` in status, no /calls, no call frames.
+    calls: true,
     strict: false,
     log: (line) => console.log(line),
     ...options,
@@ -85,6 +92,7 @@ export async function startMockPhone(options = {}) {
   const tokenHashes = new Set(opts.tokens.map(sha256));
   const pairing = { code: opts.pairingCode, expiresAt: Date.now() + opts.pairingTtlMs, used: false, failures: [], lockedUntil: 0 };
   const sends = new Map(); // client_id -> { result, at }
+  const callRequests = new Map(); // client_id -> { result, at }
   const sockets = new Set();
 
   const outgoing = (schema, body) => {
@@ -129,6 +137,7 @@ export async function startMockPhone(options = {}) {
     device_name: opts.deviceName,
     uptime_s: Math.floor((Date.now() - startedAt) / 1000),
     paired_clients: tokenHashes.size,
+    ...(opts.calls ? { calls: { history: true, dial: true, answer: true, end: true } } : {}),
   });
 
   const syncCursor = () => `s${state.maxSms}.m${state.maxMms}`;
@@ -188,6 +197,68 @@ export async function startMockPhone(options = {}) {
     const id = Math.max(0, ...state.threads.keys()) + 1;
     state.threads.set(id, { id, participants: [address], snippet: null, date: Date.now(), unread_count: 0, message_count: 0 });
     return id;
+  }
+
+  // Calls ------------------------------------------------------------------
+
+  const callNumber = (id) => Number(id.split(":")[1]);
+  const lineFrame = () => (({ state: s, direction, number, since }) => ({ type: "call_state", state: s, direction, number, since }))(state.line);
+
+  function setLine(next) {
+    state.line = { ...next, since: Date.now() };
+    opts.log(`line ${state.line.state}`);
+    if (opts.calls) broadcast("ws-call-state", lineFrame());
+  }
+
+  /** Writes the call that just ended into the history, as the phone's call log would. */
+  function logCall(kind, was) {
+    const id = Math.max(0, ...state.calls.map((c) => callNumber(c.id))) + 1;
+    const talked = kind === "in" || kind === "out" ? Math.max(0, Math.round((Date.now() - was.since) / 1000)) : 0;
+    const call = { id: `call:${id}`, number: was.number, kind, date: was.startedAt ?? was.since, duration_s: talked };
+    state.calls.push(call);
+    if (opts.calls) broadcast("ws-call", { type: "call", call });
+    return call;
+  }
+
+  /** Simulates a call arriving on the phone. `number` null is a withheld number. */
+  function ring({ number = null } = {}) {
+    if (state.line.state !== "idle") throw new Error("the mock line is busy");
+    setLine({ state: "ringing", direction: "in", number });
+    state.line.startedAt = state.line.since;
+  }
+
+  /** Simulates the other party hanging up, or giving up while it still rings. */
+  function remoteHangup() {
+    const was = state.line;
+    if (was.state === "idle") return null;
+    setLine({ state: "idle", direction: null, number: null });
+    return logCall(was.state === "ringing" ? "missed" : was.direction, was);
+  }
+
+  function handleDial(frame) {
+    const result = (status, error = null) => ({ type: "call_result", client_id: frame.client_id, status, error });
+    if (EMERGENCY.has(frame.to.replace(/[^0-9]/g, ""))) return result("failed", "emergency numbers are dialed on the phone");
+    if (!/^[+0-9*#][0-9*#]*$/.test(frame.to.replace(/[\s().-]/g, ""))) return result("failed", "that is not a number the phone can dial");
+    if (state.line.state !== "idle") return result("failed", "a call is already in progress");
+    if (opts.failTo.includes(frame.to)) return result("failed", "the phone could not place the call");
+    setLine({ state: "active", direction: "out", number: frame.to });
+    state.line.startedAt = state.line.since;
+    return result("ok");
+  }
+
+  function handleCallAction(frame) {
+    const result = (status, error = null) => ({ type: "call_result", client_id: frame.client_id, status, error });
+    const was = state.line;
+    if (frame.action === "answer") {
+      if (was.state !== "ringing") return result("failed", "no call is ringing");
+      setLine({ state: "active", direction: "in", number: was.number });
+      state.line.startedAt = was.startedAt;
+      return result("ok");
+    }
+    if (was.state === "idle") return result("failed", "there is no call to end");
+    setLine({ state: "idle", direction: null, number: null });
+    logCall(was.state === "ringing" ? "rejected" : was.direction, was);
+    return result("ok");
   }
 
   /** Simulates a text arriving on the phone. */
@@ -259,6 +330,18 @@ export async function startMockPhone(options = {}) {
 
       if (req.method === "GET" && path === "/contacts") return sendJson(res, 200, "contacts", { contacts: state.contacts });
 
+      if (req.method === "GET" && path === "/calls" && opts.calls) {
+        const limit = parseLimit(url.searchParams.get("limit"), 200, 500);
+        if (limit === null) return sendError(res, 400, "bad_request", "limit must be 1-500");
+        const raw = url.searchParams.get("cursor");
+        const from = raw === null ? 0 : /^c(\d+)$/.test(raw) ? Number(raw.slice(1)) : null;
+        if (from === null) return sendError(res, 400, "bad_cursor", "unknown cursor");
+        const newer = state.calls.filter((c) => callNumber(c.id) > from).sort((a, b) => callNumber(a.id) - callNumber(b.id));
+        const page = newer.slice(0, limit);
+        const last = page.length ? callNumber(page[page.length - 1].id) : from;
+        return sendJson(res, 200, "calls-page", { calls: page, next_cursor: `c${last}`, has_more: newer.length > limit });
+      }
+
       const partMatch = /^\/mms\/(\d+)$/.exec(path);
       if (req.method === "GET" && partMatch) {
         const partId = Number(partMatch[1]);
@@ -272,6 +355,20 @@ export async function startMockPhone(options = {}) {
         }
         res.writeHead(200, { "content-type": part.content_type, "content-length": bytes.length });
         return res.end(bytes);
+      }
+
+      // Mock-only hooks so a developer can simulate a call arriving and the caller hanging up.
+      if (req.method === "POST" && path === "/_mock/ring") {
+        const body = JSON.parse((await readBody(req)) || "{}");
+        if (state.line.state !== "idle") return sendError(res, 400, "bad_request", "the mock line is busy");
+        ring({ number: typeof body.number === "string" ? body.number : null });
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end("{}");
+      }
+      if (req.method === "POST" && path === "/_mock/hangup") {
+        const call = remoteHangup();
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ id: call?.id ?? null }));
       }
 
       // Mock-only hook so a developer can simulate an incoming text.
@@ -332,7 +429,8 @@ export async function startMockPhone(options = {}) {
       fail("unsupported_version", "this phone speaks protocol version 1");
       return ws.close(4000, "unsupported protocol version");
     }
-    const schema = { send: "ws-send", ping: "ws-ping", mark_read: "ws-mark-read" }[frame.type];
+    const callSchemas = opts.calls ? { dial: "ws-dial", call_action: "ws-call-action" } : {};
+    const schema = { send: "ws-send", ping: "ws-ping", mark_read: "ws-mark-read", ...callSchemas }[frame.type];
     if (!schema) return; // Unknown client frame types are ignored for forward compatibility.
     const problem = validator.check(schema, frame);
     if (problem) {
@@ -342,6 +440,13 @@ export async function startMockPhone(options = {}) {
     }
 
     if (frame.type === "ping") return reply("ws-pong", { type: "pong" });
+    if (frame.type === "dial" || frame.type === "call_action") {
+      // A request seen before is answered as before and never acted on twice.
+      const known = callRequests.get(frame.client_id);
+      const result = known && Date.now() - known.at < 86_400_000 ? known.result : frame.type === "dial" ? handleDial(frame) : handleCallAction(frame);
+      if (!known) callRequests.set(frame.client_id, { result, at: Date.now() });
+      return reply("ws-call-result", result);
+    }
     if (frame.type === "mark_read") {
       if (!state.status.is_default_sms_app) return fail("not_default_sms_app", "Only the default SMS app can mark messages read");
       const thread = state.threads.get(frame.thread_id);
@@ -425,6 +530,7 @@ export async function startMockPhone(options = {}) {
           }),
         ),
       );
+      if (opts.calls) ws.send(JSON.stringify(outgoing("ws-call-state", { protocol_version: PV, ...lineFrame() })));
     });
   });
 
@@ -442,6 +548,10 @@ export async function startMockPhone(options = {}) {
     certPem,
     deviceName: opts.deviceName,
     injectInbound,
+    ring,
+    remoteHangup,
+    /** "idle", "ringing" or "active". */
+    lineState: () => state.line.state,
     /** Issues a token as if pairing had happened, for tests and scripted dev. */
     issueToken() {
       const token = newToken();

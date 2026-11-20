@@ -260,3 +260,135 @@ test("a frame with the wrong protocol version closes the socket with 4000", asyn
   c.ws.send(JSON.stringify({ protocol_version: 2, type: "ping" }));
   assert.equal(await closed, 4000);
 });
+
+// Calls ----------------------------------------------------------------------
+
+test("call history is paged oldest first, and status says what the phone can do", async () => {
+  const status = await call("GET", "/status");
+  assert.deepEqual(status.json.calls, { history: true, dial: true, answer: true, end: true });
+  const first = await call("GET", "/calls?limit=3");
+  assert.equal(validator.check("calls-page", first.json), null);
+  assert.deepEqual(first.json.calls.map((c) => c.id), ["call:412", "call:413", "call:414"]);
+  assert.equal(first.json.has_more, true);
+  const rest = await call("GET", `/calls?cursor=${encodeURIComponent(first.json.next_cursor)}`);
+  assert.deepEqual(rest.json.calls.map((c) => c.id), ["call:415"]);
+  assert.equal(rest.json.has_more, false);
+  const none = await call("GET", `/calls?cursor=${encodeURIComponent(rest.json.next_cursor)}`);
+  assert.deepEqual(none.json.calls, []);
+  assert.equal(none.json.next_cursor, rest.json.next_cursor, "the cursor stays put when nothing is new");
+  assert.equal((await call("GET", "/calls?cursor=nonsense")).json.error.code, "bad_cursor");
+});
+
+test("a call rings, is answered from the client, ended, and lands in the history", async () => {
+  const c = await connect();
+  await c.next((f) => f.type === "hello");
+  assert.equal((await c.next((f) => f.type === "call_state")).state, "idle", "the line is reported right after hello");
+  phone.ring({ number: "+15855550101" });
+  const ringing = await c.next((f) => f.type === "call_state");
+  assert.deepEqual([ringing.state, ringing.direction, ringing.number], ["ringing", "in", "+15855550101"]);
+  c.send({ type: "call_action", client_id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", action: "answer" });
+  assert.equal((await c.next((f) => f.type === "call_result")).status, "ok");
+  assert.equal((await c.next((f) => f.type === "call_state")).state, "active");
+  c.send({ type: "call_action", client_id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", action: "end" });
+  assert.equal((await c.next((f) => f.type === "call_result")).status, "ok");
+  const idle = await c.next((f) => f.type === "call_state");
+  assert.deepEqual([idle.state, idle.direction, idle.number], ["idle", null, null]);
+  const logged = await c.next((f) => f.type === "call");
+  assert.equal(logged.call.kind, "in");
+  assert.equal(logged.call.number, "+15855550101");
+  const page = await call("GET", "/calls?cursor=c415");
+  assert.ok(page.json.calls.some((entry) => entry.id === logged.call.id), "the history has the entry the frame announced");
+  c.ws.close();
+});
+
+test("a call nobody answers is logged as missed, a declined one as rejected", async () => {
+  const c = await connect();
+  await c.next((f) => f.type === "call_state" && f.state === "idle");
+  phone.ring({ number: null });
+  const ringing = await c.next((f) => f.type === "call_state" && f.state === "ringing");
+  assert.equal(ringing.number, null, "a withheld number stays withheld");
+  phone.remoteHangup();
+  assert.equal((await c.next((f) => f.type === "call")).call.kind, "missed");
+  await c.next((f) => f.type === "call_state" && f.state === "idle");
+
+  phone.ring({ number: "+15855550102" });
+  await c.next((f) => f.type === "call_state" && f.state === "ringing");
+  c.send({ type: "call_action", client_id: "3c4d5e6f-7a8b-4c9d-8e1f-2a3b4c5d6e7f", action: "end" });
+  assert.equal((await c.next((f) => f.type === "call_result")).status, "ok");
+  const declined = await c.next((f) => f.type === "call");
+  assert.deepEqual([declined.call.kind, declined.call.duration_s], ["rejected", 0]);
+  c.ws.close();
+});
+
+test("dial places one call; a repeated dial, an emergency number and a busy line do not", async () => {
+  const c = await connect();
+  await c.next((f) => f.type === "call_state" && f.state === "idle");
+  const dialId = "4d5e6f7a-8b9c-4d0e-9f2a-3b4c5d6e7f8a";
+  c.send({ type: "dial", client_id: dialId, to: "+15855550177" });
+  assert.equal((await c.next((f) => f.type === "call_result" && f.client_id === dialId)).status, "ok");
+  const active = await c.next((f) => f.type === "call_state");
+  assert.deepEqual([active.state, active.direction, active.number], ["active", "out", "+15855550177"]);
+
+  // The same request again: answered as before, and no second call.
+  c.send({ type: "dial", client_id: dialId, to: "+15855550177" });
+  assert.equal((await c.next((f) => f.type === "call_result" && f.client_id === dialId)).status, "ok");
+  // A different request while the line is busy.
+  c.send({ type: "dial", client_id: "5e6f7a8b-9c0d-4e1f-a03b-4c5d6e7f8a9b", to: "+15855550102" });
+  const busy = await c.next((f) => f.type === "call_result");
+  assert.deepEqual([busy.status, busy.error], ["failed", "a call is already in progress"]);
+
+  c.send({ type: "call_action", client_id: "6f7a8b9c-0d1e-4f2a-b14c-5d6e7f8a9b0c", action: "end" });
+  assert.equal((await c.next((f) => f.type === "call_result")).status, "ok");
+  const logged = await c.next((f) => f.type === "call");
+  assert.deepEqual([logged.call.kind, logged.call.number], ["out", "+15855550177"]);
+  await c.next((f) => f.type === "call_state" && f.state === "idle");
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(c.frames.filter((f) => f.type === "call").length, 0, "one call, one history entry");
+
+  c.send({ type: "dial", client_id: "7a8b9c0d-1e2f-4a3b-825d-6e7f8a9b0c1d", to: "911" });
+  const refused = await c.next((f) => f.type === "call_result");
+  assert.deepEqual([refused.status, refused.error], ["failed", "emergency numbers are dialed on the phone"]);
+  c.send({ type: "dial", client_id: "8b9c0d1e-2f3a-4b4c-936e-7f8a9b0c1d2e", to: "call me maybe" });
+  assert.equal((await c.next((f) => f.type === "call_result")).status, "failed");
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(c.frames.filter((f) => f.type === "call_state").length, 0, "the line never left idle");
+  c.ws.close();
+});
+
+test("call actions with nothing to act on fail, and malformed ones are errors", async () => {
+  const c = await connect();
+  await c.next((f) => f.type === "call_state" && f.state === "idle");
+  c.send({ type: "call_action", client_id: "9c0d1e2f-3a4b-4c5d-a47f-8a9b0c1d2e3f", action: "answer" });
+  assert.deepEqual(
+    (({ status, error }) => [status, error])(await c.next((f) => f.type === "call_result")),
+    ["failed", "no call is ringing"],
+  );
+  c.send({ type: "call_action", client_id: "0d1e2f3a-4b5c-4d6e-b58a-9b0c1d2e3f4a", action: "end" });
+  assert.equal((await c.next((f) => f.type === "call_result")).status, "failed");
+  c.send({ type: "call_action", client_id: "1e2f3a4b-5c6d-4e7f-869b-0c1d2e3f4a5b", action: "silence" });
+  assert.equal((await c.next((f) => f.type === "error")).code, "bad_request");
+  c.send({ type: "dial", client_id: "2f3a4b5c-6d7e-4f8a-970c-1d2e3f4a5b6c" });
+  assert.equal((await c.next((f) => f.type === "error")).code, "bad_request");
+  c.ws.close();
+});
+
+test("a phone from before calls says nothing about them", async () => {
+  const old = await startMockPhone({ port: 0, strict: true, calls: false, log: () => {} });
+  const saved = { phone, token };
+  phone = old;
+  token = old.issueToken();
+  try {
+    assert.equal((await call("GET", "/status")).json.calls, undefined);
+    assert.equal((await call("GET", "/calls")).status, 404);
+    const c = await connect();
+    await c.next((f) => f.type === "hello");
+    c.send({ type: "dial", client_id: "3a4b5c6d-7e8f-4a9b-a81d-2e3f4a5b6c7d", to: "+15855550177" });
+    c.send({ type: "ping" });
+    await c.next((f) => f.type === "pong");
+    assert.equal(c.frames.length, 0, "no call_state after hello and no answer to dial");
+    c.ws.close();
+  } finally {
+    await old.close();
+    ({ phone, token } = saved);
+  }
+});
