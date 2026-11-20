@@ -85,6 +85,11 @@ permissions it holds right now: `history`, `dial`, `answer`, `end`. A phone
 that does not know about calls leaves the field out, and the client then
 offers nothing to do with calls.
 
+`status` may carry `mms`: `send` says whether a `send` with attachments or
+more than one recipient works, and `max_bytes` is the carrier's limit for one
+whole MMS. A phone that leaves `mms` out sends SMS to one recipient only, and
+the client offers no attachments and no replies in group conversations.
+
 Errors on any endpoint use the `error` schema with these codes:
 `bad_request`, `bad_cursor`, `unauthorized`, `pairing_invalid`,
 `pairing_rejected`, `rate_limited`, `not_found`, `unsupported_version`,
@@ -114,7 +119,7 @@ Text frames only, one JSON object per frame, each with `protocol_version` and
 
 | `type` | Schema | Behavior |
 | --- | --- | --- |
-| `send` | `ws-send` | Send an SMS. Exactly one of `thread_id` or `to`. Bodies longer than one segment are sent as multipart SMS. |
+| `send` | `ws-send` | Send a text. Exactly one of `thread_id` or `to`, and a `body`, `attachments`, or both. Sent as SMS when there are no attachments and one recipient (bodies longer than one segment as multipart SMS); otherwise as one MMS, which to a thread or `to` with several people is a group MMS to all of them. |
 | `mark_read` | `ws-mark-read` | Best effort. Only works when the phone app is the default SMS app; otherwise the phone replies `error` with code `not_default_sms_app`. |
 | `ping` | `ws-ping` | Every 30 seconds. The client reconnects if no `pong` arrives within 10 seconds. |
 | `dial` | `ws-dial` | Place a call to `to` through the phone. The voice stays on the phone. |
@@ -139,6 +144,15 @@ Text frames only, one JSON object per frame, each with `protocol_version` and
 6. Results for one `client_id` are sent in order, but clients still treat the
    status as only moving forward (queued, sent, delivered; failed is final)
    and ignore a result that would move it back.
+7. MMS: attachments travel in the `send` frame as base64, so replaying the
+   outbox after a reconnect needs nothing else. The phone builds one MMS from
+   the body and every attachment and hands it to the system's MMS service.
+   `"sent"` means the carrier's MMS server accepted it; MMS asks for no
+   delivery report, so `"sent"` is final. An MMS larger than the phone's
+   `max_bytes` is not sent: `"failed"` with `error: "MMS_TOO_LARGE"`. A thread
+   whose participants cannot be read is `"failed"` with
+   `error: "NO_RECIPIENTS"`. Other MMS failures carry the system's
+   `MMS_ERROR_*` name.
 
 ### Calls
 
