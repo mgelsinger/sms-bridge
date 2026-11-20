@@ -118,7 +118,19 @@ class CallDeskTest {
     private val phone = FakeTelephone()
     private val line = LineTracker { clock }
     private val logs = mutableListOf<String>()
-    private val desk = CallDesk(phone, line, now = { clock }, log = { logs += it })
+    private val pauses = mutableListOf<Long>()
+    private var duringPause: () -> Unit = {}
+    private val desk = CallDesk(
+        phone,
+        line,
+        now = { clock },
+        log = { logs += it },
+        pause = { ms ->
+            pauses += ms
+            clock += ms
+            duringPause()
+        },
+    )
 
     private fun dial(n: Int, to: String) = desk.dial(DialFrame(clientId = uuid(n), to = to))
     private fun act(n: Int, action: CallAction) = desk.act(CallActionFrame(clientId = uuid(n), action = action))
@@ -189,6 +201,41 @@ class CallDeskTest {
         line.report(Hook.RINGING, null)
         assertEquals(CallResultStatus.OK, act(1, CallAction.END).status)
         assertEquals(1, phone.ends)
+    }
+
+    /**
+     * Regression: a decline 136 ms into the ring crashed Android 14's system
+     * process. The phone now lets a call ring for 1.5 seconds before it touches it.
+     */
+    @Test
+    fun aCallIsNotTouchedInItsFirstMomentsOfRinging() {
+        line.report(Hook.RINGING, ALEX)
+        clock += 136
+        assertEquals(CallResultStatus.OK, act(1, CallAction.END).status)
+        assertEquals(listOf(1_364L), pauses, "it waited out the rest of the 1.5 seconds first")
+        assertEquals(1, phone.ends)
+
+        line.report(Hook.IDLE, null)
+        line.report(Hook.RINGING, ALEX)
+        clock += 40
+        assertEquals(CallResultStatus.OK, act(2, CallAction.ANSWER).status)
+        assertEquals(listOf(1_364L, 1_460L), pauses)
+
+        line.report(Hook.IDLE, null)
+        line.report(Hook.RINGING, ALEX)
+        clock += 5_000
+        act(3, CallAction.END)
+        assertEquals(2, pauses.size, "a call that has rung for a while is acted on at once")
+    }
+
+    @Test
+    fun aCallThatStopsRingingWhileThePhoneWaitsIsNotActedOn() {
+        line.report(Hook.RINGING, ALEX)
+        duringPause = { line.report(Hook.IDLE, null) }
+        assertEquals("there is no call to end", act(1, CallAction.END).error)
+        line.report(Hook.RINGING, ALEX)
+        assertEquals("no call is ringing", act(2, CallAction.ANSWER).error)
+        assertEquals(0 to 0, phone.answers to phone.ends)
     }
 
     @Test
