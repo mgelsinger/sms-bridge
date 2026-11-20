@@ -65,9 +65,67 @@ enum class ErrorCode {
     @SerialName("not_found") NOT_FOUND,
     @SerialName("unsupported_version") UNSUPPORTED_VERSION,
     @SerialName("not_default_sms_app") NOT_DEFAULT_SMS_APP,
+    @SerialName("not_permitted") NOT_PERMITTED,
     @SerialName("send_failed") SEND_FAILED,
     @SerialName("internal") INTERNAL,
 }
+
+/** How a call in the phone's history went. */
+@Serializable
+enum class CallKind {
+    /** Inbound and answered. */
+    @SerialName("in") IN,
+
+    /** Placed from the phone, answered or not. */
+    @SerialName("out") OUT,
+    @SerialName("missed") MISSED,
+    @SerialName("rejected") REJECTED,
+    @SerialName("blocked") BLOCKED,
+    @SerialName("voicemail") VOICEMAIL,
+}
+
+/** What the phone's line is doing. It describes the line, not one call. */
+@Serializable
+enum class LineState {
+    @SerialName("idle") IDLE,
+    @SerialName("ringing") RINGING,
+
+    /** Off the hook. For an outbound call this starts when dialing starts. */
+    @SerialName("active") ACTIVE,
+}
+
+@Serializable
+enum class CallAction {
+    @SerialName("answer") ANSWER,
+
+    /** Decline the ringing call, or hang up the active one. */
+    @SerialName("end") END,
+}
+
+@Serializable
+enum class CallResultStatus {
+    @SerialName("ok") OK,
+    @SerialName("failed") FAILED,
+}
+
+/** One entry of the phone's call history. `number` is null when it was withheld. */
+@Serializable
+data class Call(
+    val id: String,
+    val number: String?,
+    val kind: CallKind,
+    val date: Long,
+    @SerialName("duration_s") val durationSeconds: Long,
+)
+
+/** What the phone can do with calls given the permissions it holds right now. */
+@Serializable
+data class CallAbilities(
+    val history: Boolean,
+    val dial: Boolean,
+    val answer: Boolean,
+    val end: Boolean,
+)
 
 @Serializable
 data class MmsPart(
@@ -120,6 +178,8 @@ data class DeviceStatus(
     @SerialName("is_default_sms_app") val isDefaultSmsApp: Boolean,
     @SerialName("uptime_s") val uptimeSeconds: Long,
     @SerialName("paired_clients") val pairedClients: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val calls: CallAbilities? = null,
 )
 
 @Serializable
@@ -133,6 +193,8 @@ data class StatusResponse(
     @SerialName("is_default_sms_app") val isDefaultSmsApp: Boolean,
     @SerialName("uptime_s") val uptimeSeconds: Long,
     @SerialName("paired_clients") val pairedClients: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val calls: CallAbilities? = null,
 ) {
     companion object {
         fun of(s: DeviceStatus) = StatusResponse(
@@ -144,6 +206,7 @@ data class StatusResponse(
             isDefaultSmsApp = s.isDefaultSmsApp,
             uptimeSeconds = s.uptimeSeconds,
             pairedClients = s.pairedClients,
+            calls = s.calls,
         )
     }
 }
@@ -167,6 +230,14 @@ data class MessagesPage(
 data class SyncPage(
     @SerialName("protocol_version") val protocolVersion: Int = PROTOCOL_VERSION,
     val messages: List<Message>,
+    @SerialName("next_cursor") val nextCursor: String,
+    @SerialName("has_more") val hasMore: Boolean,
+)
+
+@Serializable
+data class CallsPage(
+    @SerialName("protocol_version") val protocolVersion: Int = PROTOCOL_VERSION,
+    val calls: List<Call>,
     @SerialName("next_cursor") val nextCursor: String,
     @SerialName("has_more") val hasMore: Boolean,
 )
@@ -269,6 +340,48 @@ data class ErrorFrame(
     val code: ErrorCode,
     val message: String,
     @SerialName("client_id") val clientId: String? = null,
+) : WsFrame
+
+@Serializable
+@SerialName("call_state")
+data class CallStateFrame(
+    @SerialName("protocol_version") override val protocolVersion: Int = PROTOCOL_VERSION,
+    val state: LineState,
+    val direction: Direction?,
+    val number: String?,
+    val since: Long,
+) : WsFrame
+
+@Serializable
+@SerialName("call")
+data class CallFrame(
+    @SerialName("protocol_version") override val protocolVersion: Int = PROTOCOL_VERSION,
+    val call: Call,
+) : WsFrame
+
+@Serializable
+@SerialName("call_result")
+data class CallResultFrame(
+    @SerialName("protocol_version") override val protocolVersion: Int = PROTOCOL_VERSION,
+    @SerialName("client_id") val clientId: String,
+    val status: CallResultStatus,
+    val error: String? = null,
+) : WsFrame
+
+@Serializable
+@SerialName("dial")
+data class DialFrame(
+    @SerialName("protocol_version") override val protocolVersion: Int = PROTOCOL_VERSION,
+    @SerialName("client_id") val clientId: String,
+    val to: String,
+) : WsFrame
+
+@Serializable
+@SerialName("call_action")
+data class CallActionFrame(
+    @SerialName("protocol_version") override val protocolVersion: Int = PROTOCOL_VERSION,
+    @SerialName("client_id") val clientId: String,
+    val action: CallAction,
 ) : WsFrame
 
 @Serializable

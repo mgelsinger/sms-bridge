@@ -28,6 +28,8 @@ class FixtureRoundTripTest {
         "threads-page" to ThreadsPage.serializer(),
         "messages-page" to MessagesPage.serializer(),
         "sync-page" to SyncPage.serializer(),
+        "call" to Call.serializer(),
+        "calls-page" to CallsPage.serializer(),
         "pair-request" to PairRequest.serializer(),
         "pair-response" to PairResponse.serializer(),
         "pairing-qr" to PairingQr.serializer(),
