@@ -498,6 +498,23 @@ impl PhoneClient {
         }
     }
 
+    /// A contact's thumbnail photo and its content type.
+    pub async fn contact_photo(&self, contact_id: u64) -> Result<(String, Bytes), NetError> {
+        let (status, content_type, bytes) = self
+            .request(
+                "GET",
+                &format!("/contacts/{contact_id}/photo"),
+                None,
+                self.request_timeout,
+            )
+            .await?;
+        if status == 200 {
+            Ok((content_type, bytes))
+        } else {
+            Err(NetError::Status(status))
+        }
+    }
+
     pub async fn websocket(&self) -> Result<PhoneSocket, NetError> {
         let tls = self.connect().await?;
         let mut req = format!("wss://{}/ws", self.host_header())

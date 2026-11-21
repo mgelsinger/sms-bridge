@@ -331,6 +331,14 @@ async fn mms_part(state: Shared<'_>, part_id: u64) -> Result<tauri::ipc::Respons
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+/// A contact's photo, from the phone. The window keeps what it gets for the session.
+#[tauri::command]
+async fn contact_photo(state: Shared<'_>, contact_id: u64) -> Result<tauri::ipc::Response, String> {
+    let client = state.client().ok_or("not paired")?;
+    let (_, bytes) = client.contact_photo(contact_id).await.map_err(err)?;
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+}
+
 /// Saves an MMS attachment into the user's Downloads folder, never over an existing
 /// file, and returns the path it was saved to.
 #[tauri::command]
@@ -466,6 +474,7 @@ fn main() {
             reconnect,
             mms_part,
             save_mms_part,
+            contact_photo,
             show_in_folder,
             computer_name,
             calls,
