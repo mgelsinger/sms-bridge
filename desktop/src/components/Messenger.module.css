@@ -57,6 +57,35 @@
 .thread:hover {
   background: var(--hover);
 }
+.threadRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.threadText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.avatarLetters {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--selected);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
 .selected,
 .selected:hover {
   background: var(--selected);

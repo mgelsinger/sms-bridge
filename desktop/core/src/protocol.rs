@@ -193,6 +193,9 @@ pub struct Contact {
     pub id: u64,
     pub name: String,
     pub numbers: Vec<String>,
+    /// True when `GET /contacts/{id}/photo` has a picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub photo: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

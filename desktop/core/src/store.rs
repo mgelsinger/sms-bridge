@@ -16,7 +16,7 @@ pub type Result<T> = rusqlite::Result<T>;
 /// The schema, one step per version. A store is brought up to date by running
 /// the steps it has not seen, each in its own transaction, so `user_version`
 /// always says exactly which steps are in the file.
-const MIGRATIONS: [&str; 4] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
+const MIGRATIONS: [&str; 5] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
 
 const SCHEMA_V1: &str = "
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -101,6 +101,13 @@ const SCHEMA_V3: &str = "
 /// send is attachments only.
 const SCHEMA_V4: &str = "ALTER TABLE outbox ADD COLUMN attachments TEXT;";
 
+/// Version 5: which contact a number belongs to and whether it has a photo, so
+/// a conversation can show the picture. The photo itself stays on the phone and
+/// is fetched when shown.
+const SCHEMA_V5: &str = "
+    ALTER TABLE contacts ADD COLUMN contact_id INTEGER;
+    ALTER TABLE contacts ADD COLUMN photo INTEGER NOT NULL DEFAULT 0;";
+
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
@@ -122,6 +129,8 @@ pub struct ThreadView {
     pub participants: Vec<String>,
     /// Contact names where known, otherwise the numbers.
     pub title: String,
+    /// For a one-to-one thread whose contact has a photo: that contact's id.
+    pub photo_contact: Option<u64>,
     pub snippet: Option<String>,
     pub date: u64,
     pub unread: u32,
@@ -351,11 +360,12 @@ impl Store {
         let tx = self.conn.transaction()?;
         tx.execute("DELETE FROM contacts", [])?;
         {
-            let mut stmt =
-                tx.prepare("INSERT OR REPLACE INTO contacts (number, name) VALUES (?1, ?2)")?;
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO contacts (number, name, contact_id, photo) VALUES (?1, ?2, ?3, ?4)",
+            )?;
             for c in contacts {
                 for n in &c.numbers {
-                    stmt.execute([n, &c.name])?;
+                    stmt.execute(params![n, &c.name, c.id, c.photo == Some(true)])?;
                 }
             }
         }
@@ -529,6 +539,15 @@ impl Store {
         rows.collect()
     }
 
+    /// Numbers whose contact has a photo, with that contact's id.
+    fn photos(&self) -> Result<HashMap<String, u64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT number, contact_id FROM contacts WHERE photo = 1 AND contact_id IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))?;
+        rows.collect()
+    }
+
     /// Every (name, number) pair, for the new-message picker.
     pub fn contacts(&self) -> Result<Vec<(String, String)>> {
         let mut stmt = self
@@ -550,6 +569,7 @@ impl Store {
 
     pub fn threads(&self) -> Result<Vec<ThreadView>> {
         let names = self.names()?;
+        let photos = self.photos()?;
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.participants, t.snippet, t.date, t.phone_unread, t.local_read_at,
                     (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id AND m.direction = 'in' AND m.date > t.local_read_at)
@@ -568,10 +588,15 @@ impl Store {
                 .map(|p| names.get(p).cloned().unwrap_or_else(|| p.clone()))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let photo_contact = match participants.as_slice() {
+                [one] => photos.get(one).copied(),
+                _ => None,
+            };
             Ok(ThreadView {
                 id: r.get(0)?,
                 participants,
                 title,
+                photo_contact,
                 snippet: r.get(2)?,
                 date: r.get(3)?,
                 unread,
@@ -787,9 +812,53 @@ mod tests {
             id: 1,
             name: "Alex Rivera".into(),
             numbers: vec!["+15855550101".into()],
+            photo: None,
         }])
         .expect("contacts");
         s
+    }
+
+    #[test]
+    fn a_one_to_one_thread_points_at_its_contacts_photo() {
+        let mut s = Store::open_in_memory().expect("store");
+        s.replace_contacts(&[
+            Contact {
+                id: 7,
+                name: "Alex Rivera".into(),
+                numbers: vec!["+15855550101".into()],
+                photo: Some(true),
+            },
+            Contact {
+                id: 8,
+                name: "Sam".into(),
+                numbers: vec!["+15855550103".into()],
+                photo: None,
+            },
+        ])
+        .expect("contacts");
+        s.upsert_messages(&[
+            msg("sms:1", 11, Direction::In, 100, "hi"),
+            Message {
+                address: "+15855550103".into(),
+                participants: vec!["+15855550103".into()],
+                ..msg("sms:2", 12, Direction::In, 200, "yo")
+            },
+            Message {
+                participants: vec!["+15855550101".into(), "+15855550103".into()],
+                ..msg("sms:3", 13, Direction::In, 300, "all")
+            },
+        ])
+        .expect("upsert");
+        let photo = |id: u64| {
+            s.threads()
+                .expect("threads")
+                .into_iter()
+                .find(|t| t.id == id)
+                .and_then(|t| t.photo_contact)
+        };
+        assert_eq!(photo(11), Some(7));
+        assert_eq!(photo(12), None, "no photo");
+        assert_eq!(photo(13), None, "a group shows no one's photo");
     }
 
     #[test]

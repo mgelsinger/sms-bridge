@@ -4,6 +4,7 @@ import { cleanNumber, dayLabel, listTime, sameDay } from "../lib/format";
 import { threadMatches } from "../lib/search";
 import { Composer } from "./Composer";
 import { Attachment } from "./Attachment";
+import { Avatar } from "./Avatar";
 import { placeReactions } from "../lib/reactions";
 import styles from "./Messenger.module.css";
 
@@ -166,14 +167,17 @@ function useMmsLimit(): number | null {
 function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; selected: boolean; onOpen: () => void }) {
   return (
     <li>
-      <button className={`${styles.thread} ${selected ? styles.selected : ""}`} onClick={onOpen}>
-        <span className={styles.threadTop}>
-          <span className={`${styles.name} ${t.unread > 0 ? styles.unreadName : ""}`}>{t.title}</span>
-          <span className={styles.time}>{listTime(t.date)}</span>
-        </span>
-        <span className={styles.threadBottom}>
-          <span className={styles.snippet}>{t.snippet ?? ""}</span>
-          {t.unread > 0 && <span className={styles.badge}>{t.unread}</span>}
+      <button className={`${styles.thread} ${styles.threadRow} ${selected ? styles.selected : ""}`} onClick={onOpen}>
+        <Avatar title={t.title} contactId={t.photo_contact} group={t.participants.length > 1} />
+        <span className={styles.threadText}>
+          <span className={styles.threadTop}>
+            <span className={`${styles.name} ${t.unread > 0 ? styles.unreadName : ""}`}>{t.title}</span>
+            <span className={styles.time}>{listTime(t.date)}</span>
+          </span>
+          <span className={styles.threadBottom}>
+            <span className={styles.snippet}>{t.snippet ?? ""}</span>
+            {t.unread > 0 && <span className={styles.badge}>{t.unread}</span>}
+          </span>
         </span>
       </button>
     </li>
@@ -243,6 +247,7 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
   return (
     <div className={styles.conversation}>
       <header className={styles.header}>
+        <Avatar title={thread.title} contactId={thread.photo_contact} group={group} />
         <div className={styles.headerText}>
           <div className={styles.headerTitle}>{thread.title}</div>
           {thread.title !== thread.participants.join(", ") && <div className={styles.headerSub}>{thread.participants.join(", ")}</div>}

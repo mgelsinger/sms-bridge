@@ -39,6 +39,8 @@ export interface ThreadView {
   snippet: string | null;
   date: number;
   unread: number;
+  /** For a one-to-one thread whose contact has a photo: that contact's id. */
+  photo_contact?: number | null;
 }
 
 export interface MmsPart {
@@ -160,6 +162,7 @@ export const api = {
   autostartEnabled: () => invoke<boolean>("autostart_enabled"),
   setAutostart: (enabled: boolean) => invoke<void>("set_autostart", { enabled }),
   mmsPart: (partId: number) => invoke<ArrayBuffer>("mms_part", { partId }),
+  contactPhoto: (contactId: number) => invoke<ArrayBuffer>("contact_photo", { contactId }),
   saveMmsPart: (partId: number, name: string | null) => invoke<string>("save_mms_part", { partId, name }),
   showInFolder: (path: string) => invoke<void>("show_in_folder", { path }),
   computerName: () => invoke<string>("computer_name"),
