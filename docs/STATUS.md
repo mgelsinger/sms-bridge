@@ -10,8 +10,10 @@ Last updated: 2026-11-20.
   hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); results and
   what was found on the way are in [PHASE-2.md](PHASE-2.md) and
   [PHASE-3.md](PHASE-3.md).
-- Running on both the phone and the PC: dev-a04794c, since 19:39 on
-  2026-11-20 (dev-fcd3328 earlier that evening; the phone had dev-969c085
+- Running: the PC on dev-af5621c since 20:28 on 2026-11-20 (checked:
+  connected, 44 conversations, store at step 7, the new controls present),
+  the phone on dev-a04794c since 19:39 (nothing for the phone changed after
+  it). Before that both had dev-fcd3328 that evening; the phone had dev-969c085
   and the PC dev-0351f88 earlier that day, both dev-5e591cf from 2026-11-11
   before that), paired, and in
   ordinary daily use. Texts arrive overnight with the taskbar dot; texts sent
