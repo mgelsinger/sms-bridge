@@ -927,7 +927,8 @@ mod tests {
         assert_eq!(m[0].body, None, "a picture alone has no text bubble");
         assert_eq!(m[0].pending_attachments, 1);
         // A text-only send carries no attachments and stays an SMS.
-        s.outbox_add("c10", Some(11), None, "hi", &[], 600).expect("outbox");
+        s.outbox_add("c10", Some(11), None, "hi", &[], 600)
+            .expect("outbox");
         let m = s.messages(11, None, 10).expect("messages");
         assert_eq!((m[0].kind, m[0].pending_attachments), (MessageKind::Sms, 0));
     }
@@ -1221,7 +1222,10 @@ mod tests {
             .expect("version");
         assert_eq!(version, MIGRATIONS.len() as i64);
         assert!(s.calls(None, 10).expect("calls").is_empty());
-        assert!(s.outbox_unconfirmed().expect("outbox with attachments column").is_empty());
+        assert!(s
+            .outbox_unconfirmed()
+            .expect("outbox with attachments column")
+            .is_empty());
         assert_eq!(found(&s, "pizza"), ["sms:1"]);
         assert_eq!(s.message_count().expect("count"), 2, "nothing was lost");
         assert_eq!(

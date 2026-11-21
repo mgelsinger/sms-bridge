@@ -347,7 +347,11 @@ async fn save_mms_part(
     let path = sms_bridge_core::attachments::unique_path(&dir, &file, |p| p.exists());
     // create_new: if another save took the name in the meantime, fail instead of overwriting.
     use std::io::Write as _;
-    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map_err(err)?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(err)?;
     f.write_all(&bytes).map_err(err)?;
     Ok(path.display().to_string())
 }
