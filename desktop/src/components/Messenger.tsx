@@ -191,6 +191,35 @@ function useMmsLimit(): number | null {
   return max;
 }
 
+/** This PC's own options for a conversation: pin, mute, mark unread. */
+function ConversationMenu({ thread }: { thread: ThreadView }) {
+  const [open, setOpen] = useState(false);
+  const act = (f: () => Promise<void>) => {
+    setOpen(false);
+    void f().catch(() => {});
+  };
+  return (
+    <div className={styles.convMenuWrap}>
+      <button className={styles.inlineBtn} onClick={() => setOpen((o) => !o)} aria-label="Conversation options" aria-expanded={open}>
+        •••
+      </button>
+      {open && (
+        <div className={styles.convMenu} role="menu">
+          <button role="menuitemcheckbox" aria-checked={Boolean(thread.pinned)} onClick={() => act(() => api.setPinned(thread.id, !thread.pinned))}>
+            {thread.pinned ? "Unpin" : "Pin to top"}
+          </button>
+          <button role="menuitemcheckbox" aria-checked={Boolean(thread.muted)} onClick={() => act(() => api.setMuted(thread.id, !thread.muted))}>
+            {thread.muted ? "Unmute" : "Mute"}
+          </button>
+          <button role="menuitem" onClick={() => act(() => api.markUnread(thread.id))}>
+            Mark as unread
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; selected: boolean; onOpen: () => void }) {
   return (
     <li>
@@ -198,7 +227,19 @@ function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; select
         <Avatar title={t.title} contactId={t.photo_contact} group={t.participants.length > 1} />
         <span className={styles.threadText}>
           <span className={styles.threadTop}>
-            <span className={`${styles.name} ${t.unread > 0 ? styles.unreadName : ""}`}>{t.title}</span>
+            <span className={`${styles.name} ${t.unread > 0 && !t.muted ? styles.unreadName : ""}`}>
+              {t.pinned && (
+                <span className={styles.rowMark} title="Pinned" aria-label="Pinned">
+                  📌{" "}
+                </span>
+              )}
+              {t.title}
+              {t.muted && (
+                <span className={styles.rowMark} title="Muted" aria-label="Muted">
+                  {" "}🔕
+                </span>
+              )}
+            </span>
             <span className={styles.time}>{listTime(t.date)}</span>
           </span>
           <span className={styles.threadBottom}>
@@ -285,6 +326,7 @@ function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: 
           <div className={styles.headerTitle}>{thread.title}</div>
           {thread.title !== thread.participants.join(", ") && <div className={styles.headerSub}>{thread.participants.join(", ")}</div>}
         </div>
+        <ConversationMenu thread={thread} />
         {call && !group && thread.participants[0] && cleanNumber(thread.participants[0]) && (
           <button
             className={styles.callBtn}

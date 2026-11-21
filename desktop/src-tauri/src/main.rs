@@ -327,6 +327,32 @@ fn mark_read(state: Shared<'_>, thread_id: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// Makes a conversation's newest incoming text unread again on this PC.
+#[tauri::command]
+fn mark_unread(state: Shared<'_>, thread_id: u64) -> Result<(), String> {
+    state
+        .db(|s| s.mark_unread_locally(thread_id))
+        .map_err(err)?;
+    state.emit_threads_changed();
+    Ok(())
+}
+
+/// Keeps a conversation at the top of the list, on this PC.
+#[tauri::command]
+fn set_pinned(state: Shared<'_>, thread_id: u64, pinned: bool) -> Result<(), String> {
+    state.db(|s| s.set_pinned(thread_id, pinned)).map_err(err)?;
+    state.emit_threads_changed();
+    Ok(())
+}
+
+/// Stops a conversation from counting toward the taskbar dot or raising pop-ups.
+#[tauri::command]
+fn set_muted(state: Shared<'_>, thread_id: u64, muted: bool) -> Result<(), String> {
+    state.db(|s| s.set_muted(thread_id, muted)).map_err(err)?;
+    state.emit_threads_changed();
+    Ok(())
+}
+
 /// The thread on screen, so its messages do not raise notifications while the window is focused.
 #[tauri::command]
 fn set_open_thread(state: Shared<'_>, thread_id: Option<u64>) {
@@ -504,6 +530,9 @@ fn main() {
             retry,
             discard,
             mark_read,
+            mark_unread,
+            set_pinned,
+            set_muted,
             set_open_thread,
             reconnect,
             mms_part,

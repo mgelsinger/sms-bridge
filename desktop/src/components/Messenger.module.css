@@ -198,6 +198,37 @@
 .menu button:hover {
   background: var(--hover);
 }
+.convMenuWrap {
+  position: relative;
+}
+.convMenu {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  padding: 4px;
+  z-index: 4;
+}
+.convMenu button {
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+.convMenu button:hover {
+  background: var(--hover);
+}
+.rowMark {
+  font-size: 11px;
+}
 .main {
   min-width: 0;
   min-height: 0;

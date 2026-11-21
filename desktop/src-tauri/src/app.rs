@@ -381,7 +381,9 @@ impl Events for Bridge {
         let Some(app) = self.state.upgrade() else {
             return;
         };
-        let enabled = app.db(|s| s.pref(PREF_POPUPS)).unwrap_or(false);
+        // A muted conversation never raises a pop-up.
+        let muted = app.db(|s| s.is_muted(message.thread_id)).unwrap_or(false);
+        let enabled = !muted && app.db(|s| s.pref(PREF_POPUPS)).unwrap_or(false);
         let focused = app
             .handle
             .get_webview_window("main")

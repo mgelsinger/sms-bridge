@@ -190,6 +190,28 @@ describe("reacting, forwarding and group texts from the PC", () => {
   });
 });
 
+describe("conversation options", () => {
+  it("pins, mutes and marks unread through the PC's own commands", async () => {
+    const t = { id: 4, title: "Sam Lee", participants: ["+15855550103"], snippet: null, date: 0, unread: 0, pinned: false, muted: true };
+    vi.mocked(api.threads).mockResolvedValue([t]);
+    vi.mocked(api.messages).mockResolvedValue([]);
+    Object.assign(api, { setPinned: vi.fn().mockResolvedValue(undefined), setMuted: vi.fn().mockResolvedValue(undefined), markUnread: vi.fn().mockResolvedValue(undefined) });
+    render(<Messenger paired={paired} conn={{ state: "connected", device_name: "Pixel" }} onUnpaired={() => {}} />);
+    expect(await screen.findByLabelText("Muted")).toBeTruthy();
+    fireEvent.click(screen.getAllByText("Sam Lee")[0] as HTMLElement);
+    const open = async () => fireEvent.click(await screen.findByLabelText("Conversation options"));
+    await open();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Pin to top" }));
+    await waitFor(() => expect(api.setPinned).toHaveBeenCalledWith(4, true));
+    await open();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Unmute" }));
+    await waitFor(() => expect(api.setMuted).toHaveBeenCalledWith(4, false));
+    await open();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as unread" }));
+    await waitFor(() => expect(api.markUnread).toHaveBeenCalledWith(4));
+  });
+});
+
 describe("threadFor", () => {
   it("finds the conversation with exactly those people, however the numbers are written", async () => {
     const { threadFor } = await import("./Messenger");

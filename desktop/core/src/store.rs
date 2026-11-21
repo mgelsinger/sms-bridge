@@ -16,8 +16,8 @@ pub type Result<T> = rusqlite::Result<T>;
 /// The schema, one step per version. A store is brought up to date by running
 /// the steps it has not seen, each in its own transaction, so `user_version`
 /// always says exactly which steps are in the file.
-const MIGRATIONS: [&str; 6] = [
-    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6,
+const MIGRATIONS: [&str; 7] = [
+    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7,
 ];
 
 const SCHEMA_V1: &str = "
@@ -115,6 +115,13 @@ const SCHEMA_V5: &str = "
 /// when due, the engine clears `send_at` and sends it like any queued text.
 const SCHEMA_V6: &str = "ALTER TABLE outbox ADD COLUMN send_at INTEGER;";
 
+/// Version 7: this PC's own choices per conversation. Pinned ones sort first;
+/// muted ones count for nothing in the taskbar dot and raise no pop-up. The
+/// phone never hears of either.
+const SCHEMA_V7: &str = "
+    ALTER TABLE threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE threads ADD COLUMN muted INTEGER NOT NULL DEFAULT 0;";
+
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
@@ -138,6 +145,10 @@ pub struct ThreadView {
     pub title: String,
     /// For a one-to-one thread whose contact has a photo: that contact's id.
     pub photo_contact: Option<u64>,
+    /// Kept at the top of the list (this PC only).
+    pub pinned: bool,
+    /// No taskbar dot or pop-up for it (this PC only).
+    pub muted: bool,
     pub snippet: Option<String>,
     pub date: u64,
     pub unread: u32,
@@ -615,8 +626,9 @@ impl Store {
         let photos = self.photos()?;
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.participants, t.snippet, t.date, t.phone_unread, t.local_read_at,
-                    (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id AND m.direction = 'in' AND m.date > t.local_read_at)
-             FROM threads t ORDER BY t.date DESC, t.id DESC",
+                    (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id AND m.direction = 'in' AND m.date > t.local_read_at),
+                    t.pinned, t.muted
+             FROM threads t ORDER BY t.pinned DESC, t.date DESC, t.id DESC",
         )?;
         let rows = stmt.query_map([], |r| {
             let participants: Vec<String> = json_vec(&r.get::<_, String>(1)?);
@@ -643,14 +655,62 @@ impl Store {
                 snippet: r.get(2)?,
                 date: r.get(3)?,
                 unread,
+                pinned: r.get(7)?,
+                muted: r.get(8)?,
             })
         })?;
         rows.collect()
     }
 
-    /// Unread texts across all threads, counted the way the thread list shows them.
+    /// Unread texts across all threads, counted the way the thread list shows
+    /// them, leaving out muted conversations.
     pub fn unread_total(&self) -> Result<u32> {
-        Ok(self.threads()?.iter().map(|t| t.unread).sum())
+        Ok(self
+            .threads()?
+            .iter()
+            .filter(|t| !t.muted)
+            .map(|t| t.unread)
+            .sum())
+    }
+
+    pub fn set_pinned(&self, thread_id: u64, pinned: bool) -> Result<()> {
+        self.conn.execute(
+            "UPDATE threads SET pinned = ?2 WHERE id = ?1",
+            params![thread_id, pinned],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_muted(&self, thread_id: u64, muted: bool) -> Result<()> {
+        self.conn.execute(
+            "UPDATE threads SET muted = ?2 WHERE id = ?1",
+            params![thread_id, muted],
+        )?;
+        Ok(())
+    }
+
+    pub fn is_muted(&self, thread_id: u64) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT muted FROM threads WHERE id = ?1",
+                [thread_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(false))
+    }
+
+    /// Makes the newest incoming text unread again on this PC.
+    pub fn mark_unread_locally(&self, thread_id: u64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE threads SET local_read_at = (
+                 SELECT MAX(date) - 1 FROM messages WHERE thread_id = ?1 AND direction = 'in')
+             WHERE id = ?1
+               AND EXISTS (SELECT 1 FROM messages WHERE thread_id = ?1 AND direction = 'in')",
+            [thread_id],
+        )?;
+        Ok(())
     }
 
     /// Threads the phone lists as having messages while none of them are stored here,
@@ -1066,6 +1126,38 @@ mod tests {
         s.upsert_messages(&[msg("sms:2", 11, Direction::In, 300, "again")])
             .expect("new");
         assert_eq!(s.threads().expect("threads")[0].unread, 1);
+    }
+
+    #[test]
+    fn pinned_sort_first_muted_count_for_nothing_and_unread_comes_back() {
+        let mut s = Store::open_in_memory().expect("open");
+        s.upsert_messages(&[
+            msg("sms:1", 11, Direction::In, 100, "old"),
+            msg("sms:2", 12, Direction::In, 200, "new"),
+        ])
+        .expect("upsert");
+        let order = |s: &Store| {
+            s.threads()
+                .expect("threads")
+                .iter()
+                .map(|t| t.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(order(&s), [12, 11]);
+        s.set_pinned(11, true).expect("pin");
+        assert_eq!(order(&s), [11, 12], "pinned first");
+
+        assert_eq!(s.unread_total().expect("unread"), 2);
+        s.set_muted(12, true).expect("mute");
+        assert!(s.is_muted(12).expect("muted"));
+        assert_eq!(s.unread_total().expect("unread"), 1, "muted do not count");
+
+        s.mark_read_locally(11, 1_000).expect("read");
+        assert_eq!(s.threads().expect("threads")[0].unread, 0);
+        s.mark_unread_locally(11).expect("unread again");
+        assert_eq!(s.threads().expect("threads")[0].unread, 1);
+        // A thread with nothing incoming is left as it is.
+        s.mark_unread_locally(99).expect("no such thread");
     }
 
     #[test]

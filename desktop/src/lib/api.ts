@@ -41,6 +41,10 @@ export interface ThreadView {
   unread: number;
   /** For a one-to-one thread whose contact has a photo: that contact's id. */
   photo_contact?: number | null;
+  /** Kept at the top of the list, on this PC. */
+  pinned?: boolean;
+  /** No taskbar dot or pop-up from it, on this PC. */
+  muted?: boolean;
 }
 
 export interface MmsPart {
@@ -161,6 +165,9 @@ export const api = {
   retry: (clientId: string) => invoke<void>("retry", { clientId }),
   discard: (clientId: string) => invoke<void>("discard", { clientId }),
   markRead: (threadId: number) => invoke<void>("mark_read", { threadId }),
+  markUnread: (threadId: number) => invoke<void>("mark_unread", { threadId }),
+  setPinned: (threadId: number, pinned: boolean) => invoke<void>("set_pinned", { threadId, pinned }),
+  setMuted: (threadId: number, muted: boolean) => invoke<void>("set_muted", { threadId, muted }),
   setOpenThread: (threadId: number | null) => invoke<void>("set_open_thread", { threadId }),
   reconnect: () => invoke<void>("reconnect"),
   popupsEnabled: () => invoke<boolean>("popups_enabled"),
