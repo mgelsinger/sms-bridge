@@ -498,7 +498,13 @@ impl Core {
         if let Some(t) = thread_id {
             self.events.thread_changed(t);
         }
-        Ok(Some(send_frame(client_id, thread_id, to, body, attachments)))
+        Ok(Some(send_frame(
+            client_id,
+            thread_id,
+            to,
+            body,
+            attachments,
+        )))
     }
 
     /// Connects, reads `hello`, and catches up: everything before live frames.
