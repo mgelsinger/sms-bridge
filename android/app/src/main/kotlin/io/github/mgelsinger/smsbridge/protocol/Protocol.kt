@@ -180,6 +180,8 @@ data class DeviceStatus(
     @SerialName("paired_clients") val pairedClients: Int,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val calls: CallAbilities? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val mms: MmsAbilities? = null,
 )
 
 @Serializable
@@ -195,6 +197,8 @@ data class StatusResponse(
     @SerialName("paired_clients") val pairedClients: Int,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val calls: CallAbilities? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val mms: MmsAbilities? = null,
 ) {
     companion object {
         fun of(s: DeviceStatus) = StatusResponse(
@@ -207,6 +211,7 @@ data class StatusResponse(
             uptimeSeconds = s.uptimeSeconds,
             pairedClients = s.pairedClients,
             calls = s.calls,
+            mms = s.mms,
         )
     }
 }
@@ -393,8 +398,30 @@ data class SendFrame(
     @SerialName("thread_id") val threadId: Long? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val to: List<String>? = null,
-    val body: String,
-) : WsFrame
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val body: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val attachments: List<OutgoingAttachment>? = null,
+) : WsFrame {
+    /** One recipient and nothing attached goes as SMS; anything else is one MMS. */
+    val isMms: Boolean get() = !attachments.isNullOrEmpty() || (to?.size ?: 1) > 1
+}
+
+/** An attachment the client wants sent, as base64. */
+@Serializable
+data class OutgoingAttachment(
+    @SerialName("content_type") val contentType: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val name: String? = null,
+    val data: String,
+)
+
+/** Whether the phone can send MMS, and the carrier's size limit for one. */
+@Serializable
+data class MmsAbilities(
+    val send: Boolean,
+    @SerialName("max_bytes") val maxBytes: Int,
+)
 
 @Serializable
 @SerialName("mark_read")
