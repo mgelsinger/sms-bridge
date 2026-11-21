@@ -171,10 +171,12 @@ Last updated: 2026-11-20.
   runs end to end with `--no-phone`. Known without the phone: the PC has a
   Bluetooth radio, no phone is paired to it, and Windows' calling classes
   answer from an unpackaged process. Part B of CALLS-DESK.md.
-- Calls, not built: the PC cannot silence the ringer (needs the dialer role),
-  shows no contact pictures, and has no search over the call history. The
-  status menu has "Pop-ups for calls", on by default; Mickey has not been
-  asked whether he wants that default.
+- Calls, not built: the PC cannot silence the ringer (needs the dialer role)
+  and cannot reach voicemail. Built since: search over the call history by
+  name or number, an All/Missed switch, and contact photos on call rows
+  (5fecb06, so in dev builds after dev-a04794c). The status menu has "Pop-ups
+  for calls", on by default; Mickey has not been asked whether he wants that
+  default.
 - The agent never places or answers a call on Mickey's phone. Call tests run
   on CI's emulator only; local connected tests stay forbidden while his phone
   is attached to adb, and on 2026-11-20 it was.

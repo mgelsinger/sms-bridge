@@ -11,9 +11,9 @@ one you make, or one somebody makes to you.
 
 ## Part A: calls over the bridge
 
-1. **Install the newest dev build on both.** Done on 2026-11-20:
-   dev-fcd3328 is on the phone and the PC, pairing and permissions kept, the
-   PC store upgraded in place. Nothing for you here.
+1. **Install the newest dev build on both.** Done on 2026-11-20, and kept
+   up to date by the agent since: any build from dev-fcd3328 on has calls.
+   Pairing and permissions are kept. Nothing for you here.
 2. **Allow calls on the phone.** Open SMS Bridge, scroll to the Calls card
    under Paired PCs, tap "Allow calls", and accept what Android asks. Expect
    two prompts: Phone, and Call logs. If Android refuses Call logs, it is the
