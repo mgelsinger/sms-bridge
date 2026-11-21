@@ -54,6 +54,13 @@ made safe for Windows, never overwrites (`name (2).jpg`), and "Show in
 folder" opens Explorer on it. Video and audio play in the window and are
 fetched from the phone only when Play is pressed.
 
+**Contact photos are fetched when shown, not synced.** `/contacts` says which
+contacts have a thumbnail (from the same phone-number query, so no query per
+contact) and `GET /contacts/{id}/photo` serves it. The PC stores only the
+flag and the contact id (store schema step 5) and asks for a picture the
+first time a row shows it, keeping it for the session. Groups show a group
+sign, not one member's face.
+
 **iPhone reactions are shown on their message.** With RCS off, an iPhone's
 tapback arrives as a text such as `Loved "see you soon"`. The PC places it
 as a badge on the newest earlier message with that text (or on the newest

@@ -82,7 +82,7 @@ Last updated: 2026-11-20.
 ## Open items
 
 - Pictures and group replies (MMS sending), attachment playback and saving,
-  and iPhone reactions were built on 2026-11-20 (DECISIONS.md, "Pictures,
+  contact photos, and iPhone reactions were built on 2026-11-20 (DECISIONS.md, "Pictures,
   group replies, attachments"). CI covers the encoder, the validation, the
   outbox and the window; the emulator cannot send MMS, so its test stops at
   the system's MMS service. To check at the desk, with Mickey sending: a
