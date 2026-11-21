@@ -31,6 +31,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Linking the PC as a companion device, for verification codes on Android 17. -->
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
 
     <application
         android:name=".platform.SmsBridgeApp"

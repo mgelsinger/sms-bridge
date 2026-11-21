@@ -154,8 +154,14 @@ Last updated: 2026-11-20.
   for three hours, broadcast and provider queries both, for all apps. Such
   codes will reach the PC three hours late. For apps targeting API 37 this
   extends to ordinary OTP texts, so do not raise `targetSdk` from 35 to 37
-  without a plan. Google lists "connected device companion apps" as exempt;
-  find out what qualifies, since this app is one in spirit. Source:
+  without a plan. Google lists "connected device companion apps" as exempt
+  without defining them. Since 2026-11-20 the phone app can link the PC as
+  a companion device over Bluetooth (DECISIONS.md, "Verification codes
+  through a companion link"); not yet tried. Desk test: on the PC open
+  Bluetooth & devices, Add device, Bluetooth; on the phone tap Link a PC in
+  the Verification codes card and pick the PC; then have some site text a
+  login code and see whether the PC shows it within seconds. The phone's
+  log names any text that reached the app over a minute late. Source:
   https://developer.android.com/about/versions/17/behavior-changes-all and
   https://developer.android.com/about/versions/17/behavior-changes-17
 - History fetches: measured on the real phone on 2026-11-20 for a 1:1

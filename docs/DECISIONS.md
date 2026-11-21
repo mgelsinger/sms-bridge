@@ -3,6 +3,28 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Verification codes through a companion link, 2026-11-20
+
+Mickey on 2026-11-20: "I want to be able to use it for passcodes".
+
+**The phone can link the PC as a companion device.** Android 17 exempts
+"connected device companion apps" from its three-hour hold on
+verification-code texts, without saying what qualifies (both behavior
+change pages, read 2026-11-20). The likeliest reading is an app holding a
+CompanionDeviceManager association, and one other project reports a held
+code appearing on a Pixel after it made one over Bluetooth. So the
+settings screen has a "Verification codes" card whose Link button opens
+the system's own picker of nearby Bluetooth devices; Mickey picks his PC
+(made findable under Bluetooth & devices, Add device). The app scans
+nothing itself and asks for no Bluetooth permission; Unlink removes it.
+No device profile is requested: the computer profile needs a permission
+an ordinary app cannot hold.
+
+**Whether it works is an experiment.** If codes still come late, the
+phone's log now says so for every text that reached the app more than a
+minute after the phone received it (message id and minutes only). The
+answer goes here once seen.
+
 ## Not the default SMS app, 2026-11-20
 
 **Phase 5 is dropped.** Mickey on 2026-11-20, offered it with its cost

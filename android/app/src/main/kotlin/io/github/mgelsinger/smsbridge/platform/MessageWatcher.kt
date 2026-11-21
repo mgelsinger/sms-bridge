@@ -9,6 +9,7 @@ import io.github.mgelsinger.smsbridge.core.EventHub
 import io.github.mgelsinger.smsbridge.core.SendTracker
 import io.github.mgelsinger.smsbridge.core.SmsRepository
 import io.github.mgelsinger.smsbridge.core.SyncCursor
+import io.github.mgelsinger.smsbridge.protocol.Direction
 import io.github.mgelsinger.smsbridge.protocol.MessageFrame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -91,6 +92,11 @@ class MessageWatcher(
                     val (message, update) = tracker?.claim(m) ?: (m to null)
                     hub.publish(MessageFrame(message = message))
                     update?.let(hub::publish)
+                    // Android 17 holds verification codes back for hours; say when a text came late.
+                    val lateBy = System.currentTimeMillis() - message.date
+                    if (message.direction == Direction.IN && lateBy > LATE_MS) {
+                        log("${message.id} reached the app ${lateBy / 60_000} min after the phone received it")
+                    }
                 }
                 pushed += result.messages.size
                 c = result.next
@@ -110,5 +116,6 @@ class MessageWatcher(
         private const val DEBOUNCE_MS = 300L
         private const val POLL_MS = 30_000L
         private const val BATCH = 100
+        private const val LATE_MS = 60_000L
     }
 }

@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mgelsinger.smsbridge.core.PairingManager
 import io.github.mgelsinger.smsbridge.platform.AppGraph
 import io.github.mgelsinger.smsbridge.platform.BridgeService
+import io.github.mgelsinger.smsbridge.platform.CompanionLink
 import io.github.mgelsinger.smsbridge.platform.EventLog
 import io.github.mgelsinger.smsbridge.platform.ServiceState
 import io.github.mgelsinger.smsbridge.protocol.PROTOCOL_VERSION
@@ -147,6 +150,7 @@ fun SettingsScreen(graph: AppGraph) {
                 onGrant = { permissions.launch(missingCalls.map { it.first }.toTypedArray()) },
             )
         }
+        item { CodesCard(graph, refresh) { refresh++ } }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -251,6 +255,64 @@ private fun CallsCard(missing: List<String>, onGrant: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Links the PC as a companion device so Android 17 may let verification-code texts
+ * through at once instead of three hours late. The system shows its own device picker.
+ */
+@Composable
+private fun CodesCard(graph: AppGraph, refreshKey: Int, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    if (!CompanionLink.supported(context)) return
+    val links = remember(refreshKey) { CompanionLink.links(context) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val chooser = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        graph.log.add(if (result.resultCode == android.app.Activity.RESULT_OK) "companion link chosen" else "companion link cancelled")
+        onChanged()
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Verification codes", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Android 17 holds some verification-code texts back from apps like this one for three hours. " +
+                    "Apps linked to a companion device are exempt. Linking your PC over Bluetooth should let codes reach it at once.",
+            )
+            if (links.isEmpty()) {
+                Text(
+                    "On the PC, open Settings, Bluetooth & devices, Add device, Bluetooth, so the phone can find it. Then tap Link and pick the PC.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = {
+                    problem = null
+                    CompanionLink.request(
+                        context,
+                        onChooser = { chooser.launch(IntentSenderRequest.Builder(it).build()) },
+                        onLinked = {
+                            graph.log.add("companion link made")
+                            onChanged()
+                        },
+                        onFailed = {
+                            problem = it
+                            graph.log.add("companion link failed")
+                        },
+                    )
+                }) { Text("Link a PC") }
+            } else {
+                for (l in links) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Linked: ${l.label}", Modifier.weight(1f))
+                        TextButton(onClick = {
+                            CompanionLink.unlink(context, l)
+                            graph.log.add("companion link removed")
+                            onChanged()
+                        }) { Text("Unlink") }
+                    }
+                }
+            }
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
