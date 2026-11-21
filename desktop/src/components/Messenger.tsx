@@ -11,7 +11,7 @@ import { hasDraft, loadDraft, onDraftsChanged } from "../lib/drafts";
 import { whenLabel } from "../lib/schedule";
 import styles from "./Messenger.module.css";
 
-type Selection = { kind: "thread"; id: number } | { kind: "new"; forwarded?: Forwarded } | null;
+type Selection = { kind: "thread"; id: number; focus?: string } | { kind: "new"; forwarded?: Forwarded } | null;
 
 /** A message's text and attachments, fetched from the phone, ready to send again. */
 async function forwardOf(m: MessageView): Promise<Forwarded> {
@@ -117,7 +117,7 @@ export function Messenger({ paired, conn, onUnpaired, call }: { paired: Paired; 
               const t = threads.find((x) => x.id === m.thread_id);
               return (
                 <li key={m.id}>
-                  <button className={styles.thread} onClick={() => { setQuery(""); setSelection({ kind: "thread", id: m.thread_id }); }}>
+                  <button className={styles.thread} onClick={() => { setQuery(""); setSelection({ kind: "thread", id: m.thread_id, focus: m.id }); }}>
                     <span className={styles.threadTop}>
                       <span className={styles.name}>{t?.title ?? m.address}</span>
                       <span className={styles.time}>{listTime(m.date)}</span>
@@ -153,6 +153,7 @@ export function Messenger({ paired, conn, onUnpaired, call }: { paired: Paired; 
             key={current.id}
             thread={current}
             call={call}
+            focus={selection?.kind === "thread" ? selection.focus : undefined}
             onForward={(m) =>
               forwardOf(m).then(
                 (forwarded) => setSelection({ kind: "new", forwarded }),
@@ -258,7 +259,7 @@ function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; select
   );
 }
 
-function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: CallFromThread; onForward?: (m: MessageView) => void }) {
+function Conversation({ thread, call, onForward, focus }: { thread: ThreadView; call?: CallFromThread; onForward?: (m: MessageView) => void; focus?: string }) {
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [more, setMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -269,8 +270,37 @@ function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: 
     api.messages(thread.id).then((m) => setMessages(m)).catch((e) => setError(errorText(e)));
   }, [thread.id]);
 
+  // A search hit opens the conversation at that message: page back to it, then show it.
+  const [flash, setFlash] = useState<string | null>(null);
   useEffect(() => {
-    load();
+    if (!focus) return;
+    let alive = true;
+    void (async () => {
+      let all = await api.messages(thread.id);
+      for (let i = 0; i < 100 && alive && !all.some((m) => m.id === focus); i++) {
+        const oldest = all[all.length - 1];
+        if (!oldest) break;
+        const page = await api.messages(thread.id, oldest.date);
+        if (page.length === 0) break;
+        all = [...all, ...page.filter((p) => !all.some((x) => x.id === p.id))];
+      }
+      if (!alive) return;
+      loadingOlder.current = true; // Keep the view from jumping to the bottom.
+      setMessages(all);
+      setFlash(focus);
+      setTimeout(() => {
+        document.getElementById(`msg-${focus}`)?.scrollIntoView?.({ block: "center" });
+        loadingOlder.current = false;
+      }, 50);
+      setTimeout(() => alive && setFlash(null), 2500);
+    })().catch((e) => setError(errorText(e)));
+    return () => {
+      alive = false;
+    };
+  }, [focus, thread.id]);
+
+  useEffect(() => {
+    if (!focus) load();
     const off = events.threadChanged((id) => {
       if (id === thread.id) {
         load();
@@ -344,7 +374,7 @@ function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: 
         {ordered.map((m, i) => {
           const prev = ordered[i - 1];
           return (
-            <div key={m.id}>
+            <div key={m.id} id={`msg-${m.id}`} className={flash === m.id ? styles.flash : undefined}>
               {(!prev || !sameDay(prev.date, m.date)) && <div className={styles.dayLabel}>{dayLabel(m.date)}</div>}
               <Bubble
                 message={m}

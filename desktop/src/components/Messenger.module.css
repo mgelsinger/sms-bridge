@@ -281,6 +281,19 @@
   display: flex;
   flex-direction: column;
 }
+.flash {
+  animation: flash 2.5s ease-out;
+  border-radius: 12px;
+}
+@keyframes flash {
+  0%,
+  40% {
+    background: var(--selected);
+  }
+  100% {
+    background: transparent;
+  }
+}
 .dayLabel {
   text-align: center;
   color: var(--muted);

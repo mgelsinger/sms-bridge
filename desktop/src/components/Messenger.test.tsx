@@ -190,6 +190,26 @@ describe("reacting, forwarding and group texts from the PC", () => {
   });
 });
 
+describe("opening a search hit", () => {
+  it("pages back to the message and highlights it", async () => {
+    const t = { id: 1, title: "Alex Rivera", participants: ["+15855550101"], snippet: null, date: 0, unread: 0 };
+    const v = (id: string, date: number, body: string) => ({
+      id, thread_id: 1, kind: "sms" as const, direction: "in" as const, address: "+15855550101", sender_name: null,
+      body, parts: [], date, status: null, client_id: null, error: null,
+    });
+    vi.mocked(api.threads).mockResolvedValue([t]);
+    // The newest page lacks the hit; the page before it has it.
+    vi.mocked(api.messages).mockImplementation(async (_id: number, before?: number) => (before === undefined ? [v("sms:9", 900, "latest")] : before === 900 ? [v("sms:2", 200, "the old dinner plan")] : []));
+    vi.mocked(api.search).mockResolvedValue([v("sms:2", 200, "the old dinner plan")]);
+    render(<Messenger paired={paired} conn={{ state: "connected", device_name: "Pixel" }} onUnpaired={() => {}} />);
+    await screen.findByText("Alex Rivera");
+    fireEvent.change(screen.getByLabelText("Search names, numbers, and messages"), { target: { value: "dinner" } });
+    fireEvent.click(await screen.findByText("the old dinner plan"));
+    await waitFor(() => expect(document.getElementById("msg-sms:2")?.className).toContain("flash"));
+    expect(document.getElementById("msg-sms:9")).toBeTruthy();
+  });
+});
+
 describe("conversation options", () => {
   it("pins, mutes and marks unread through the PC's own commands", async () => {
     const t = { id: 4, title: "Sam Lee", participants: ["+15855550103"], snippet: null, date: 0, unread: 0, pinned: false, muted: true };
