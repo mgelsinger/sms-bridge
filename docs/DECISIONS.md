@@ -3,6 +3,53 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Everything both ways, 2026-11-20
+
+Mickey on 2026-11-20: "This should all be 100% bidirectional", then "keep
+building until there is nothing left to build".
+
+**Reacting from the PC sends the text iPhones send.** SMS has no reactions;
+an iPhone without RCS sends `Loved "..."` and Google Messages shows that
+form as a reaction. The PC offers the six classic ones on hover and sends
+that text to the thread; picking one you already sent sends `Removed a
+heart from "..."`. Long texts are quoted to 100 characters and an ellipsis,
+which the parser still matches. On an iPhone over SMS it arrives as that
+text, which is what iPhone users see from any Android phone without RCS.
+
+**New group texts reuse the outbox's recipient column.** Several numbers
+travel comma-separated in `to_address` (numbers never contain commas, and
+the send command refuses one that does) and are split into `to` when the
+frame is built. No schema step, and old rows read the same.
+
+**Forward fetches the attachments from the phone** and opens a new message
+with them and the text, so it is the ordinary send path from there.
+
+**Links open in the default browser, and the app fetches nothing.** No link
+previews: a preview means fetching an arbitrary site, and the only network
+peer is the phone. A click on an http(s) or www link hands it to Windows'
+URL handler (`url.dll`, not a shell), after a Rust check that it is plain
+http or https with no whitespace, quotes or control characters.
+
+**Drafts live in the window's local storage.** Per conversation, on this PC
+only. A draft is a convenience: losing one costs retyping, so browser storage
+with every access guarded is enough, and no store schema is spent on it.
+
+**Send later is done by the PC.** The outbox row waits with `send_at`
+(schema step 6) and is left out of the reconnect replay; while connected
+the engine checks every 15 seconds and releases what is due, which then is
+an ordinary queued send. So the PC must be on and connected at that time,
+and the box says so. Doing it on the phone would have needed a scheduling
+service and a protocol change for something the PC can do alone.
+
+**Pin, mute and mark unread are this PC's own** (schema step 7). Muted
+conversations count for nothing in the taskbar dot and raise no pop-up.
+None of it reaches the phone, which has no such notion for a non-default
+SMS app.
+
+**A search hit opens at the message.** The conversation pages back through
+this PC's store to it (search only finds stored messages), scrolls to it
+and highlights it.
+
 ## Phase 4 closed, 2026-11-20
 
 **Signed releases are deferred, and phase 4 closes without them.** Mickey on

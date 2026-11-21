@@ -84,6 +84,22 @@ Last updated: 2026-11-20.
 
 ## Open items
 
+- Built on 2026-11-20 after "keep building until there is nothing left to
+  build" (DECISIONS.md, "Everything both ways"), PC only, CI-tested, not yet
+  seen in use: reacting from the PC, starting a group text, forward, copy,
+  clickable links, a draft per conversation, send later, pin, mute, mark
+  unread, and search hits opening at the message. Worth a look at the desk:
+  react to an iPhone user's and a Google Messages user's text and ask what
+  they saw; start a group text with two people; schedule a text a few
+  minutes out and leave the PC on.
+- What is left on the texting side needs a decision from Mickey, not more
+  building: being the default SMS app (phase 5: mark read and delete on the
+  phone, blocking, the 86 hidden MMS rows, probably the OTP hold) at the cost
+  of replacing Google Messages and RCS on the phone; reaching the phone away
+  from home (a VPN he runs, such as WireGuard; nothing else fits the rules);
+  and voice messages recorded on the PC (needs the microphone, which WebView2
+  asks Windows for).
+
 - Pictures and group replies (MMS sending), attachment playback and saving,
   contact photos, and iPhone reactions were built on 2026-11-20 (DECISIONS.md, "Pictures,
   group replies, attachments"). CI covers the encoder, the validation, the
