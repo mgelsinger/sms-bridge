@@ -71,7 +71,8 @@ cannot tell the size without reading the part.
 | `GET /threads?limit=&cursor=` | `threads-page` | Newest activity first. `limit` 1-200, default 50. |
 | `GET /threads/{thread_id}/messages?limit=&cursor=` | `messages-page` | Newest first. `limit` 1-500, default 100. |
 | `GET /messages?cursor=&limit=` | `sync-page` | Incremental sync. No `cursor` means "start from now": returns no messages and a cursor for the newest message. Messages come in id order within each kind (all new SMS, then all new MMS), not date order; clients sort by `date`. |
-| `GET /contacts` | `contacts` | Contacts that have at least one phone number. |
+| `GET /contacts` | `contacts` | Contacts that have at least one phone number. A contact with `photo: true` has a photo. |
+| `GET /contacts/{id}/photo` | raw bytes | The contact's thumbnail photo, usually a small JPEG; `Content-Type` says which. 404 `not_found` when it has none. |
 | `GET /mms/{part_id}` | raw bytes | `Content-Type` is the part's MIME type. |
 | `GET /calls?cursor=&limit=` | `calls-page` | Call history, oldest first by id. No `cursor` means from the beginning. `limit` 1-500, default 200. 403 `not_permitted` when the phone app may not read the call log. |
 
