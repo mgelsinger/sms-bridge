@@ -1,24 +1,31 @@
 package io.github.mgelsinger.smsbridge.platform
 
+import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
+import android.util.Base64
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.github.mgelsinger.smsbridge.core.EventHub
+import io.github.mgelsinger.smsbridge.core.MmsPdu
 import io.github.mgelsinger.smsbridge.core.PairedClient
 import io.github.mgelsinger.smsbridge.core.SendHandler
 import io.github.mgelsinger.smsbridge.core.SendTracker
 import io.github.mgelsinger.smsbridge.core.SmsRepository
+import io.github.mgelsinger.smsbridge.protocol.MmsAbilities
 import io.github.mgelsinger.smsbridge.protocol.SendFrame
 import io.github.mgelsinger.smsbridge.protocol.SendResultFrame
 import io.github.mgelsinger.smsbridge.protocol.SendStatus
 import io.github.mgelsinger.smsbridge.protocol.WsFrame
+import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -47,6 +54,11 @@ class AndroidSender(
                     val ok = resultCode == Activity.RESULT_OK
                     tracker.partSent(clientId, ok, if (ok) null else errorName(resultCode))
                 }
+                ACTION_MMS_SENT -> {
+                    File(File(app.cacheDir, MMS_DIR), "$clientId.pdu").delete()
+                    val ok = resultCode == Activity.RESULT_OK
+                    tracker.partSent(clientId, ok, if (ok) null else mmsErrorName(resultCode))
+                }
                 ACTION_DELIVERED -> when (deliveryOutcome(intent)) {
                     true -> tracker.partDelivered(clientId, true)
                     false -> tracker.partDelivered(clientId, false)
@@ -64,7 +76,10 @@ class AndroidSender(
     @Synchronized
     fun register() {
         if (registered) return
-        val filter = IntentFilter(ACTION_SENT).apply { addAction(ACTION_DELIVERED) }
+        val filter = IntentFilter(ACTION_SENT).apply {
+            addAction(ACTION_DELIVERED)
+            addAction(ACTION_MMS_SENT)
+        }
         ContextCompat.registerReceiver(app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         registered = true
     }
@@ -79,24 +94,24 @@ class AndroidSender(
     override suspend fun send(client: PairedClient, frame: SendFrame): List<WsFrame> {
         tracker.known(frame.clientId)?.let { return listOf(it) }
         register()
-        val address = frame.to?.single() ?: run {
-            val people = repo.threadParticipants(frame.threadId ?: -1)
-            when {
-                people == null -> return listOf(failure(frame, "no such thread"))
-                people.size != 1 -> return listOf(failure(frame, "group threads need MMS, which this version does not send"))
-                else -> people.single()
-            }
+        val recipients = frame.to ?: repo.threadParticipants(frame.threadId ?: -1)
+        when {
+            recipients == null -> return listOf(failure(frame, "no such thread"))
+            recipients.isEmpty() -> return listOf(failure(frame, "NO_RECIPIENTS"))
         }
+        if (frame.isMms || recipients.size > 1) return sendMms(client, frame, recipients)
+        val address = recipients.single()
+        val body = frame.body ?: return listOf(failure(frame, "nothing to send"))
         val sms = smsManager()
-        val parts = sms.divideMessage(frame.body)
+        val parts = sms.divideMessage(body)
         val sent = ArrayList(parts.indices.map { intent(ACTION_SENT, frame.clientId, it) })
         val delivered = ArrayList(parts.indices.map { intent(ACTION_DELIVERED, frame.clientId, it) })
         // Publish "queued" on the same stream as the later results, before the radio
         // can report "sent", so every PC sees them in order.
-        hub.publish(tracker.begin(frame.clientId, address, frame.body, parts.size))
+        hub.publish(tracker.begin(frame.clientId, address, body, parts.size))
         try {
             if (parts.size == 1) {
-                sms.sendTextMessage(address, null, frame.body, sent[0], delivered[0])
+                sms.sendTextMessage(address, null, body, sent[0], delivered[0])
             } else {
                 sms.sendMultipartTextMessage(address, null, parts, sent, delivered)
             }
@@ -106,6 +121,50 @@ class AndroidSender(
             tracker.partSent(frame.clientId, false, e.javaClass.simpleName)?.let(hub::publish)
         }
         return emptyList()
+    }
+
+    /**
+     * One MMS for the body and every attachment, to everyone in [recipients]. The PDU is
+     * written to a private file the system's MMS service reads through a content URI; the
+     * service sends it over mobile data and, because this is not the default SMS app,
+     * stores the sent copy in the provider itself, where the watcher finds it.
+     */
+    private fun sendMms(client: PairedClient, frame: SendFrame, recipients: List<String>): List<WsFrame> {
+        val limits = mmsAbilities()
+        if (!limits.send) return listOf(failure(frame, "MMS_NOT_AVAILABLE"))
+        val pdu = try {
+            val attachments = frame.attachments.orEmpty().map {
+                MmsPdu.Part(it.contentType, Base64.decode(it.data, Base64.DEFAULT), it.name)
+            }
+            MmsPdu.sendRequest("T" + frame.clientId.replace("-", ""), recipients, frame.body, attachments)
+        } catch (e: IllegalArgumentException) {
+            return listOf(failure(frame, "MMS_BAD_CONTENT"))
+        }
+        if (pdu.size > limits.maxBytes) return listOf(failure(frame, "MMS_TOO_LARGE"))
+        val dir = File(app.cacheDir, MMS_DIR).apply { mkdirs() }
+        val file = File(dir, "${frame.clientId}.pdu")
+        file.writeBytes(pdu)
+        val uri = FileProvider.getUriForFile(app, "${app.packageName}.mms", file)
+        // The MMS service lives in the phone process on most builds, in its own package on others.
+        for (pkg in MMS_SERVICE_PACKAGES) app.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        hub.publish(tracker.beginMms(frame.clientId, recipients, frame.body))
+        try {
+            smsManager().sendMultimediaMessage(app, uri, null, null, intent(ACTION_MMS_SENT, frame.clientId, 0))
+            log("sending MMS of ${pdu.size} bytes to ${recipients.size} recipient(s) for ${client.name}")
+        } catch (e: Exception) {
+            log("MMS refused by the system: ${e.javaClass.simpleName}")
+            file.delete()
+            tracker.partSent(frame.clientId, false, e.javaClass.simpleName)?.let(hub::publish)
+        }
+        return emptyList()
+    }
+
+    /** Whether this phone can send MMS now, and the carrier's size limit for one. */
+    fun mmsAbilities(): MmsAbilities {
+        val canSend = ContextCompat.checkSelfPermission(app, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+        val max = runCatching { smsManager().carrierConfigValues.getInt(SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE) }.getOrNull()
+            ?.takeIf { it > 0 } ?: DEFAULT_MMS_MAX_BYTES
+        return MmsAbilities(send = canSend, maxBytes = max)
     }
 
     private fun failure(frame: SendFrame, why: String): SendResultFrame {
@@ -148,7 +207,24 @@ class AndroidSender(
         else -> "RESULT_ERROR_$code"
     }
 
+    private fun mmsErrorName(code: Int): String = when (code) {
+        SmsManager.MMS_ERROR_UNSPECIFIED -> "MMS_ERROR_UNSPECIFIED"
+        SmsManager.MMS_ERROR_INVALID_APN -> "MMS_ERROR_INVALID_APN"
+        SmsManager.MMS_ERROR_UNABLE_CONNECT_MMS -> "MMS_ERROR_UNABLE_CONNECT_MMS"
+        SmsManager.MMS_ERROR_HTTP_FAILURE -> "MMS_ERROR_HTTP_FAILURE"
+        SmsManager.MMS_ERROR_IO_ERROR -> "MMS_ERROR_IO_ERROR"
+        SmsManager.MMS_ERROR_RETRY -> "MMS_ERROR_RETRY"
+        SmsManager.MMS_ERROR_CONFIGURATION_ERROR -> "MMS_ERROR_CONFIGURATION_ERROR"
+        SmsManager.MMS_ERROR_NO_DATA_NETWORK -> "MMS_ERROR_NO_DATA_NETWORK"
+        else -> "MMS_ERROR_$code"
+    }
+
     companion object {
+        private const val ACTION_MMS_SENT = "io.github.mgelsinger.smsbridge.MMS_SENT"
+        private const val MMS_DIR = "mms-out"
+        private val MMS_SERVICE_PACKAGES = listOf("com.android.phone", "com.android.mms.service")
+        /** The platform's own default when the carrier configuration says nothing. */
+        const val DEFAULT_MMS_MAX_BYTES = 300 * 1024
         private const val ACTION_SENT = "io.github.mgelsinger.smsbridge.SMS_SENT"
         private const val ACTION_DELIVERED = "io.github.mgelsinger.smsbridge.SMS_DELIVERED"
         private const val EXTRA_CLIENT_ID = "client_id"

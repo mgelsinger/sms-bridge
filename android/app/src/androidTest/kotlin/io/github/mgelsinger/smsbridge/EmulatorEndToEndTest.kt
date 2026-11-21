@@ -79,7 +79,7 @@ class EmulatorEndToEndTest {
     private val pairing = PairingManager(InMemoryClientStore())
     private val tracker = SendTracker()
     private val sender = AndroidSender(context, repo, tracker, hub, log)
-    private val api = BridgeApi(repo, pairing, confirmPairing = { true }, sendHandler = sender, log = log)
+    private val api = BridgeApi(repo, pairing, confirmPairing = { true }, sendHandler = sender, log = log, mms = sender::mmsAbilities)
     private val server = BridgeServer(api, hub, identity, TlsFront.LOOPBACK_V4, 0, log)
     private val watcher = MessageWatcher(context, repo, hub, log, scope, tracker)
     private var port = 0
@@ -169,6 +169,52 @@ class EmulatorEndToEndTest {
         val page = ProtocolJson.decodeFromString(MessagesPage.serializer(), body)
         assertTrue("thread page includes ${message.id}", page.messages.any { it.id == message.id })
         assertTrue(page.messages.zipWithNext().all { (a, b) -> a.date >= b.date })
+    }
+
+    /**
+     * The emulator has no carrier MMS server, so an MMS cannot go out. What this proves is
+     * everything up to the radio: the phone says it can send MMS, builds the message, the
+     * system's MMS service takes it and reads it through the granted URI, and a final
+     * result comes back to the PC instead of nothing. On the real phone the same path ends
+     * in "sent".
+     */
+    @Test
+    fun aPictureGoesToTheSystemsMmsServiceAndAnswersWithAFinalResult() {
+        val token = pairing.issueToken("EMULATOR-CI").second
+        val status = ProtocolJson.decodeFromString(StatusResponse.serializer(), get("/status", token).second)
+        val mms = checkNotNull(status.mms) { "status carries mms" }
+        assertTrue("can send MMS", mms.send)
+        assertTrue("a carrier size limit: ${mms.maxBytes}", mms.maxBytes > 0)
+
+        val frames = LinkedBlockingQueue<WsFrame>()
+        val ws = http.newWebSocket(
+            Request.Builder().url("wss://127.0.0.1:$port/ws").header("Authorization", "Bearer $token").build(),
+            object : WebSocketListener() {
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    frames.add(ProtocolJson.decodeFromString(WsFrame.serializer(), text))
+                }
+            },
+        )
+        assertTrue(frames.poll(30, TimeUnit.SECONDS) is HelloFrame)
+        val clientId = UUID.randomUUID().toString()
+        // A 1x1 JPEG.
+        val jpeg = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+        ws.send(
+            """{"protocol_version":1,"type":"send","client_id":"$clientId","to":["15555215554","15555550177"],"body":"picture test",""" +
+                """"attachments":[{"content_type":"image/jpeg","name":"dot.jpg","data":"$jpeg"}]}""",
+        )
+        val results = mutableListOf<SendResultFrame>()
+        val deadline = System.currentTimeMillis() + 120_000
+        while (results.none { it.status == SendStatus.SENT || it.status == SendStatus.FAILED } && System.currentTimeMillis() < deadline) {
+            val f = frames.poll(5, TimeUnit.SECONDS)
+            if (f is SendResultFrame && f.clientId == clientId) results += f
+        }
+        ws.close(1000, null)
+        Log.i("SmsBridgeTest", "MMS results ${results.map { "${it.status} ${it.error}" }}")
+        assertEquals(SendStatus.QUEUED, results.firstOrNull()?.status)
+        val final = checkNotNull(results.lastOrNull()?.takeIf { it.status != SendStatus.QUEUED }) { "no final result within 2 minutes: $results" }
+        // Failures of our own making would mean the phone never handed the MMS over.
+        assertTrue("handed to the system: ${final.error}", final.error !in listOf("MMS_NOT_AVAILABLE", "MMS_BAD_CONTENT", "MMS_TOO_LARGE", "NO_RECIPIENTS"))
     }
 
     @Test

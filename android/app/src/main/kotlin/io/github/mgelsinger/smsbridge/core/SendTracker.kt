@@ -2,6 +2,7 @@ package io.github.mgelsinger.smsbridge.core
 
 import io.github.mgelsinger.smsbridge.protocol.Direction
 import io.github.mgelsinger.smsbridge.protocol.Message
+import io.github.mgelsinger.smsbridge.protocol.MessageKind
 import io.github.mgelsinger.smsbridge.protocol.SendResultFrame
 import io.github.mgelsinger.smsbridge.protocol.SendStatus
 
@@ -14,10 +15,11 @@ import io.github.mgelsinger.smsbridge.protocol.SendStatus
 class SendTracker(private val now: () -> Long = System::currentTimeMillis) {
     private class Entry(
         val clientId: String,
-        val address: String,
-        val body: String,
+        val recipients: List<String>,
+        val body: String?,
         val startedAt: Long,
         val parts: Int,
+        val mms: Boolean,
     ) {
         var sent = 0
         var delivered = 0
@@ -37,9 +39,18 @@ class SendTracker(private val now: () -> Long = System::currentTimeMillis) {
     }
 
     @Synchronized
-    fun begin(clientId: String, address: String, body: String, parts: Int): SendResultFrame {
+    fun begin(clientId: String, address: String, body: String?, parts: Int): SendResultFrame =
+        begin(clientId, listOf(address), body, parts, mms = false)
+
+    /** An MMS is one part: the system reports it sent or failed once, and asks for no delivery report. */
+    @Synchronized
+    fun beginMms(clientId: String, recipients: List<String>, body: String?): SendResultFrame =
+        begin(clientId, recipients, body, 1, mms = true)
+
+    @Synchronized
+    private fun begin(clientId: String, recipients: List<String>, body: String?, parts: Int, mms: Boolean): SendResultFrame {
         prune()
-        val e = Entry(clientId, address, body, now(), parts.coerceAtLeast(1))
+        val e = Entry(clientId, recipients, body, now(), parts.coerceAtLeast(1), mms)
         entries[clientId] = e
         return result(e)
     }
@@ -89,9 +100,12 @@ class SendTracker(private val now: () -> Long = System::currentTimeMillis) {
     fun claim(message: Message): Pair<Message, SendResultFrame?> {
         if (message.direction != Direction.OUT || message.clientId != null) return message to null
         val t = now()
+        val stored = (listOf(message.address) + message.participants).filter { it.isNotBlank() }
         val e = entries.values.firstOrNull {
             it.messageId == null && t - it.startedAt < CLAIM_WINDOW_MS &&
-                it.body == message.body && sameNumber(it.address, message.address)
+                it.mms == (message.kind == MessageKind.MMS) &&
+                (it.body ?: "") == (message.body ?: "") &&
+                it.recipients.any { r -> stored.any { s -> sameNumber(r, s) } }
         } ?: return message to null
         e.messageId = message.id
         val update = if (e.status != SendStatus.QUEUED) result(e) else null

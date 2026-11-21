@@ -50,6 +50,7 @@ class AppGraph(val context: Context) {
             sendHandler = sender,
             log = log::add,
             calls = calls,
+            mms = sender::mmsAbilities,
         )
     }
 

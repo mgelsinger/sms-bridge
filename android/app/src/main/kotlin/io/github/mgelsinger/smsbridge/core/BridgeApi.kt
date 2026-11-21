@@ -18,6 +18,7 @@ import io.github.mgelsinger.smsbridge.protocol.PairResponse
 import io.github.mgelsinger.smsbridge.protocol.PingFrame
 import io.github.mgelsinger.smsbridge.protocol.PongFrame
 import io.github.mgelsinger.smsbridge.protocol.ProtocolJson
+import io.github.mgelsinger.smsbridge.protocol.MmsAbilities
 import io.github.mgelsinger.smsbridge.protocol.SendFrame
 import io.github.mgelsinger.smsbridge.protocol.StatusResponse
 import io.github.mgelsinger.smsbridge.protocol.SyncPage
@@ -54,6 +55,8 @@ class BridgeApi(
     private val log: (String) -> Unit = {},
     /** Null on a build or in a test without calls: the phone then says nothing about them. */
     private val calls: CallDesk? = null,
+    /** Null on a build or in a test that cannot send MMS: the phone then says nothing about it. */
+    private val mms: () -> MmsAbilities? = { null },
 ) {
     fun authenticate(authorization: String?): PairedClient? = pairing.authenticate(authorization)
 
@@ -69,6 +72,7 @@ class BridgeApi(
             uptimeSeconds = (now() - startedAt) / 1000,
             pairedClients = pairing.clients.value.size,
             calls = calls?.abilities(),
+            mms = mms(),
         )
     }
 
@@ -271,10 +275,21 @@ object SendValidation {
     fun problem(frame: SendFrame): String? = when {
         !UUID_V4.matches(frame.clientId) -> "client_id must be a lowercase UUID v4"
         (frame.threadId == null) == (frame.to == null) -> "exactly one of thread_id or to is required"
-        frame.to != null && (frame.to.size != 1 || frame.to[0].isBlank() || frame.to[0].length > 64) ->
-            "to must hold exactly one address"
+        frame.to != null && (frame.to.size !in 1..MAX_RECIPIENTS || frame.to.any { it.isBlank() || it.length > 64 } || frame.to.toSet().size != frame.to.size) ->
+            "to must hold 1-$MAX_RECIPIENTS different addresses"
         frame.threadId != null && frame.threadId < 0 -> "thread_id must not be negative"
-        frame.body.isEmpty() || frame.body.length > MAX_BODY -> "body must be 1-$MAX_BODY characters"
+        frame.body == null && frame.attachments == null -> "a send needs a body, attachments, or both"
+        frame.body != null && (frame.body.isEmpty() || frame.body.length > MAX_BODY) -> "body must be 1-$MAX_BODY characters"
+        frame.attachments != null && frame.attachments.size !in 1..MAX_ATTACHMENTS -> "attachments must hold 1-$MAX_ATTACHMENTS items"
+        frame.attachments?.any { !ATTACHMENT_TYPE.matches(it.contentType) } == true -> "attachments may be pictures, video, audio, or contact cards"
+        frame.attachments?.any { it.data.length !in 4..MAX_ATTACHMENT_CHARS || !BASE64.matches(it.data) } == true -> "attachment data must be base64"
+        frame.attachments?.any { it.name != null && it.name.length !in 1..120 } == true -> "attachment names must be 1-120 characters"
         else -> null
     }
+
+    const val MAX_RECIPIENTS = 20
+    const val MAX_ATTACHMENTS = 10
+    const val MAX_ATTACHMENT_CHARS = 4_000_000
+    private val ATTACHMENT_TYPE = Regex("^((image|video|audio)/[a-z0-9.+-]+|text/x-vcard)$")
+    private val BASE64 = Regex("^[A-Za-z0-9+/]*={0,2}$")
 }

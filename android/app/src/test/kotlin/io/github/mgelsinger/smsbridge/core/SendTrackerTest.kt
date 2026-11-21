@@ -20,6 +20,29 @@ class SendTrackerTest {
         body = body, parts = emptyList(), date = clock, read = true, status = MessageStatus.SENT, clientId = null,
     )
 
+    private fun mmsRow(body: String?, participants: List<String>) = Message(
+        id = "mms:77", threadId = 12, kind = MessageKind.MMS, direction = Direction.OUT, address = participants.first(), participants = participants,
+        body = body, parts = emptyList(), date = clock, read = true, status = MessageStatus.SENT, clientId = null,
+    )
+
+    @Test
+    fun aSentMmsIsOnePartAndClaimsItsStoredCopy() {
+        assertEquals(SendStatus.QUEUED, tracker.beginMms(cid, listOf("+15855550101", "+15855550177"), null).status)
+        assertEquals(SendStatus.SENT, tracker.partSent(cid, true)?.status)
+        // A picture with no text, to a group: matched by kind, empty body, and a shared number.
+        val (claimed, update) = tracker.claim(mmsRow(null, listOf("5855550177", "5855550101")))
+        assertEquals(cid, claimed.clientId)
+        assertEquals("mms:77", update?.messageId)
+    }
+
+    @Test
+    fun anMmsSendNeverClaimsAnSmsWithTheSameText() {
+        tracker.beginMms(cid, listOf("+15855550101"), "hi")
+        assertNull(tracker.claim(row(body = "hi")).first.clientId)
+        tracker.begin("8c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "+15855550101", "hi", parts = 1)
+        assertNull(tracker.claim(mmsRow("hi", listOf("5855550101"))).first.clientId?.takeIf { it != cid }, "the SMS send stays unclaimed by an MMS row")
+    }
+
     @Test
     fun multipartSendReportsSentOnlyAfterEveryPart() {
         assertEquals(SendStatus.QUEUED, tracker.begin(cid, "+15855550101", "hi", parts = 3).status)
