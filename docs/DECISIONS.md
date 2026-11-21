@@ -147,8 +147,18 @@ the phone's speaker and microphone was not considered further.
 **Bluetooth is accepted as a second link to the phone.** It is paired in
 Windows Settings and protected by Bluetooth's own encryption, not by the
 pinned certificate. It reaches only the paired phone, so the rule "no network
-calls to anything but the paired phone" holds. Mickey has not been asked about
-this point on its own; raise it when phase 7 starts.
+calls to anything but the paired phone" holds. Mickey, on 2026-11-20, relayed
+by the main session: "I know we have to use blue tooth, that's fine."
+
+**Whether Windows' own calling API is acceptable is still open.** The same
+day Mickey said "I don't trust anything built into Windows natively", meaning
+things like Phone Link. Phase 7 as planned, and `tools/calls-probe`, use
+`Windows.ApplicationModel.Calls`: Windows' Bluetooth hands-free support, which
+involves no Microsoft account and no Phone Link, but is built into Windows all
+the same. The alternative the main session offered him is our own Bluetooth
+hands-free stack on a separate USB adapter that Windows does not manage, which
+is a much larger piece of work. He accepted Bluetooth; he has not said which
+of the two. Ask before running the probe, and before any phase 7 code.
 
 **An experiment comes before either phase.** Whether an app installed like
 ours may use `PhoneLineTransportDevice` on a real paired phone is not known.
