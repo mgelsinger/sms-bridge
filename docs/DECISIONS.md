@@ -3,6 +3,18 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Not the default SMS app, 2026-11-20
+
+**Phase 5 is dropped.** Mickey on 2026-11-20, offered it with its cost
+(Google Messages and RCS replaced on the phone): "I don't want to make this
+the default phones texting app." Do not propose it again. What only the
+default SMS app can do therefore stays out of reach for good: marking read
+or deleting on the phone, blocking, reading the 86 MMS rows Android 17
+flags `restricted`, and getting around the OTP hold by that route. Sending
+MMS never needed it (see "Pictures, group replies, attachments"). For the
+OTP hold the route left to look into is Android's exemption for connected
+device companion apps (STATUS.md).
+
 ## Everything both ways, 2026-11-20
 
 Mickey on 2026-11-20: "This should all be 100% bidirectional", then "keep

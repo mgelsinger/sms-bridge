@@ -222,7 +222,7 @@ Each phase ends in a tagged commit and a working demo. Claude Code should finish
 | 2 PC read | Tauri + pairing, SQLite sync, threads + view, toasts | Live toast on PC |
 | 3 Send + reply | SmsManager send, outbox + dedupe, composer, delivery state | Daily driver |
 | 4 Harden | Doze + reconnect, MMS + groups, search + tray, signed releases | One week of daily use |
-| 5 Default SMS app (optional) | Mark read on the phone, send MMS, dual SIM; see "Known limitations" | Not scheduled |
+| 5 Default SMS app (dropped 2026-11-20, Mickey's decision; MMS sending moved up) | Mark read on the phone, dual SIM; see "Known limitations" | Will not be built |
 | 6 Calls over the bridge | Ringing pop-up, call history, dial and hang up from the PC; the voice stays on the phone | A day of calls started and declined from the PC |
 | 7 Calls on the PC | Talk through the PC's microphone and speakers over Bluetooth hands-free | A week of calls taken at the desk |
 

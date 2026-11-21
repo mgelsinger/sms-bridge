@@ -94,12 +94,12 @@ Last updated: 2026-11-20.
   react to an iPhone user's and a Google Messages user's text and ask what
   they saw; start a group text with two people; schedule a text a few
   minutes out and leave the PC on.
-- What is left on the texting side needs a decision from Mickey, not more
-  building: being the default SMS app (phase 5: mark read and delete on the
-  phone, blocking, the 86 hidden MMS rows, probably the OTP hold) at the cost
-  of replacing Google Messages and RCS on the phone; reaching the phone away
-  from home (a VPN he runs, such as WireGuard; nothing else fits the rules);
-  and voice messages recorded on the PC (needs the microphone, which WebView2
+- Phase 5 (default SMS app) will not happen: Mickey on 2026-11-20, "I don't
+  want to make this the default phones texting app" (DECISIONS.md, "Not the
+  default SMS app"). Do not propose it. What is left on the texting side
+  needs a decision from him, not more building: reaching the phone away from
+  home (a VPN he runs, such as WireGuard; nothing else fits the rules), and
+  voice messages recorded on the PC (needs the microphone, which WebView2
   asks Windows for).
 
 - Pictures and group replies (MMS sending), attachment playback and saving,
