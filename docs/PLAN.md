@@ -13,7 +13,7 @@ Must do:
 - Show every conversation thread on the phone with full history, contact names, and read state
 - Receive new messages on the PC within 2 seconds of the phone receiving them, with a Windows notification
 - Send new messages and replies from the PC through the phone's SIM, including multipart SMS
-- Show received MMS images and group threads (sending MMS is a later phase)
+- Show received MMS images and group threads; send pictures and group replies as MMS (moved up from phase 5 on 2026-11-20, see DECISIONS.md)
 - Work on any Wi-Fi network where both devices can see each other; optionally over a WireGuard or Tailscale tunnel
 - Run unattended: phone app survives reboot, Doze, and app standby; PC app lives in the tray and reconnects on its own
 

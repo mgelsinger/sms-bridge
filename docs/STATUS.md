@@ -72,6 +72,16 @@ Last updated: 2026-11-20.
 
 ## Open items
 
+- Pictures and group replies (MMS sending), attachment playback and saving,
+  and iPhone reactions were built on 2026-11-20 (DECISIONS.md, "Pictures,
+  group replies, attachments"). CI covers the encoder, the validation, the
+  outbox and the window; the emulator cannot send MMS, so its test stops at
+  the system's MMS service. To check at the desk, with Mickey sending: a
+  picture from the PC to his own number or a friend, a reply in a group
+  conversation, and a picture over about 1 MB to see it shrunk. Watch for
+  the sent picture's bubble staying "1 attachment" (stored copy withheld by
+  Android 17) and for `MMS_ERROR_*` in the phone's log.
+
 - "Start with Windows", the tray-only start at login, and the one-copy rule
   are proven only as far as CI goes (the registry round trip, the rules, the
   menu). Nobody has yet seen them on a real PC. To check at the desk: switch
