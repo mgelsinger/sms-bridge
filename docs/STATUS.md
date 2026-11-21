@@ -19,15 +19,17 @@ Last updated: 2026-11-20.
 - Mickey will not run the Wi-Fi-drop-mid-send check on his real phone. It is
   accepted on emulator evidence (DECISIONS.md, "Phase 3 gate"). Do not ask
   again.
-- Phase 4 (harden) from [PLAN.md](PLAN.md) is in progress. Its gate, a week
-  of daily use without picking up the phone to text, passed: Mickey on
-  2026-11-20, after using it since 2026-11-11, "Texting worked perfectly"
-  (DECISIONS.md, "Phase 4 gate"). Already in place from earlier phases:
+- Phase 4 (harden) from [PLAN.md](PLAN.md) is done, closed on 2026-11-20:
+  see [PHASE-4.md](PHASE-4.md). Its gate, a week of daily use without
+  picking up the phone to text, passed: Mickey on 2026-11-20, after using it
+  since 2026-11-11, "Texting worked perfectly" (DECISIONS.md, "Phase 4
+  gate"). Already in place from earlier phases:
   start after boot, reconnect with a capped wait, tray, MMS images,
   read-only group threads, search. Built in phase 4: faster history pages,
   "Start with Windows" (off by default, in the status menu), FTS5 search,
-  and search by contact name and number. What keeps phase 4 open is signed
-  APK and installer, which waits on Mickey's decisions (last section).
+  and search by contact name and number. Signed releases were deferred by
+  Mickey the same day: unsigned dev builds on his phone, signing if he ever
+  shares the app (DECISIONS.md, "Phase 4 closed").
 - The phase 4 work went onto both devices on 2026-11-20 (APK with
   `adb install -r`, installer with `/S`, the PC store backed up first to
   `%LOCALAPPDATA%\io.github.mgelsinger.smsbridge\backup-before-969c085`).
@@ -101,12 +103,11 @@ Last updated: 2026-11-20.
   `%LOCALAPPDATA%\io.github.mgelsinger.smsbridge\backup-before-a04794c`.
 
 - "Start with Windows", the tray-only start at login, and the one-copy rule
-  are proven only as far as CI goes (the registry round trip, the rules, the
-  menu). Nobody has yet seen them on a real PC. To check at the desk: switch
-  it on in the status menu, sign out and in, and confirm the app is in the
-  tray without a window; then open it from the Start menu and confirm the
-  existing copy comes to the front and Task Manager shows one
-  `sms-bridge-desktop.exe`.
+  are proven by CI (the registry round trip, the rules, the menu). The
+  one-copy rule was seen on the real PC on 2026-11-20: a second start left
+  one process and brought its window forward. The tray-only start at login
+  is not seen yet: switch it on in the status menu, sign out and in, and
+  confirm the app is in the tray without a window.
 - Search changed with the FTS5 index: it matches whole words and word
   beginnings in any order, and no longer text in the middle of a word
   (DECISIONS.md, "Phase 4"). The store upgrade was seen working on the real
@@ -180,12 +181,15 @@ Last updated: 2026-11-20.
 - The agent never places or answers a call on Mickey's phone. Call tests run
   on CI's emulator only; local connected tests stay forbidden while his phone
   is attached to adb, and on 2026-11-20 it was.
-- The Windows installer is unsigned and dev APKs use a public dev key.
-  Signed releases are not started; see the next section.
+- The Windows installer is unsigned and dev APKs use a public dev key, by
+  Mickey's choice of 2026-11-20. Signed releases are deferred until he wants
+  to share the app; the next section is the list for that day.
 
 ## Signed releases: what Mickey must provide or decide
 
-Nothing below can be done for him. Until it is, dev builds stay as they are.
+Deferred on 2026-11-20 (DECISIONS.md, "Phase 4 closed"): only for the day he
+wants to share the app with friends. Do not raise it before then. Nothing
+below can be done for him. Until it is, dev builds stay as they are.
 
 Decided on 2026-11-20 (DECISIONS.md, "Release choices"): one app id for dev
 and release (item 4), the Windows installer stays unsigned (items 5 and 6),

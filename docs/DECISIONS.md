@@ -3,6 +3,22 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Phase 4 closed, 2026-11-20
+
+**Signed releases are deferred, and phase 4 closes without them.** Mickey on
+2026-11-20: "Skip it for now. I will use unsigned releases on my phone, and
+if I ever want to share this with my friends, I'll sign it then." Dev-key
+builds from every green push stay the way the app reaches his phone. The
+release key, its secrets, the one uninstall it costs, and the release tag
+workflow wait for the day he wants to share it; STATUS.md, "Signed
+releases", keeps the list. Do not raise it again before he does.
+
+**What else was checked at the close.** Starting the installed PC app a
+second time left one process running and brought its window forward, so the
+one-copy rule is seen on the real PC. The tray-only start at login is still
+not seen there; it needs a sign-out, so it waits for Mickey and does not hold
+the phase. PHASE-4.md has the rest.
+
 ## Pictures, group replies, attachments, 2026-11-20
 
 Mickey on 2026-11-20: "Do as much as you can to incorporate as many features
