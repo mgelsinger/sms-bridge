@@ -208,6 +208,24 @@ pub struct DeviceStatus {
     /// Absent on a phone that does not know about calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub calls: Option<CallAbilities>,
+    /// Absent on a phone that cannot send MMS: no attachments, no group replies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mms: Option<MmsAbilities>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MmsAbilities {
+    pub send: bool,
+    pub max_bytes: u64,
+}
+
+/// An attachment to send, as base64.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutgoingAttachment {
+    pub content_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub data: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -362,7 +380,10 @@ pub enum Frame {
         thread_id: Option<u64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         to: Option<Vec<String>>,
-        body: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attachments: Option<Vec<OutgoingAttachment>>,
     },
     MarkRead {
         thread_id: u64,

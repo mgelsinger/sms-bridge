@@ -85,7 +85,8 @@ fn send_frame_omits_the_unused_target() {
         client_id: "3f0e6c1a-9b2d-4c7e-8a51-2d6f0b9e4c13".into(),
         thread_id: Some(11),
         to: None,
-        body: "hi".into(),
+        body: Some("hi".into()),
+        attachments: None,
     });
     let json = serde_json::to_string(&frame).expect("encode");
     assert!(!json.contains("\"to\""), "{json}");

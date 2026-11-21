@@ -63,6 +63,20 @@ export interface MessageView {
   status: MessageStatus | null;
   client_id: string | null;
   error: string | null;
+  /** On an unsent message: attachments the phone has not stored yet. */
+  pending_attachments?: number;
+}
+
+/** An attachment on its way to the phone, as base64. */
+export interface OutgoingAttachment {
+  content_type: string;
+  name?: string;
+  data: string;
+}
+
+export interface MmsAbilities {
+  send: boolean;
+  max_bytes: number;
 }
 
 export interface DeviceStatus {
@@ -76,6 +90,8 @@ export interface DeviceStatus {
   paired_clients: number;
   /** Absent when the phone's app does not know about calls. */
   calls?: CallAbilities;
+  /** Absent when the phone cannot send MMS. */
+  mms?: MmsAbilities;
 }
 
 export type CallKind = "in" | "out" | "missed" | "rejected" | "blocked" | "voicemail";
@@ -126,12 +142,14 @@ export const api = {
   loadOlder: (threadId: number) => invoke<boolean>("load_older", { threadId }),
   search: (query: string) => invoke<MessageView[]>("search", { query }),
   contacts: () => invoke<[string, string][]>("contacts"),
-  send: (body: string, target: { threadId: number } | { to: string }) =>
+  send: (body: string, target: { threadId: number } | { to: string }, attachments: OutgoingAttachment[] = []) =>
     invoke<void>("send", {
       threadId: "threadId" in target ? target.threadId : null,
       to: "to" in target ? target.to : null,
       body,
+      attachments: attachments.length > 0 ? attachments : null,
     }),
+  mmsAbilities: () => invoke<MmsAbilities | null>("mms_abilities"),
   retry: (clientId: string) => invoke<void>("retry", { clientId }),
   discard: (clientId: string) => invoke<void>("discard", { clientId }),
   markRead: (threadId: number) => invoke<void>("mark_read", { threadId }),

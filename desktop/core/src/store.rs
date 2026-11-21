@@ -3,8 +3,8 @@
 //! here (it lives in Windows Credential Manager).
 
 use crate::protocol::{
-    Call, CallKind, Contact, Direction, Message, MessageKind, MessageStatus, MmsPart, SendStatus,
-    ThreadSummary,
+    Call, CallKind, Contact, Direction, Message, MessageKind, MessageStatus, MmsPart,
+    OutgoingAttachment, SendStatus, ThreadSummary,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -16,7 +16,7 @@ pub type Result<T> = rusqlite::Result<T>;
 /// The schema, one step per version. A store is brought up to date by running
 /// the steps it has not seen, each in its own transaction, so `user_version`
 /// always says exactly which steps are in the file.
-const MIGRATIONS: [&str; 3] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
+const MIGRATIONS: [&str; 4] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
 
 const SCHEMA_V1: &str = "
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -95,6 +95,12 @@ const SCHEMA_V3: &str = "
     );
     CREATE INDEX calls_by_date ON calls (date DESC);";
 
+/// Version 4: attachments waiting in the outbox, as the JSON array of
+/// `OutgoingAttachment` that goes into the `send` frame, so a picture queued
+/// while the phone is away is replayed like any text. An empty `body` means the
+/// send is attachments only.
+const SCHEMA_V4: &str = "ALTER TABLE outbox ADD COLUMN attachments TEXT;";
+
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
@@ -137,6 +143,9 @@ pub struct MessageView {
     pub status: Option<MessageStatus>,
     pub client_id: Option<String>,
     pub error: Option<String>,
+    /// For an unsent outbox entry: how many attachments it carries, which the
+    /// phone has not stored yet and so have no parts to show.
+    pub pending_attachments: u32,
 }
 
 /// A call history entry as the UI shows it.
@@ -158,11 +167,13 @@ pub struct OutboxItem {
     pub client_id: String,
     pub thread_id: Option<u64>,
     pub to: Option<String>,
+    /// Empty for a send of attachments only.
     pub body: String,
     pub created_at: u64,
     pub status: SendStatus,
     pub message_id: Option<String>,
     pub error: Option<String>,
+    pub attachments: Vec<OutgoingAttachment>,
 }
 
 fn enum_str<T: Serialize>(v: &T) -> String {
@@ -379,11 +390,13 @@ impl Store {
         thread_id: Option<u64>,
         to: Option<&str>,
         body: &str,
+        attachments: &[OutgoingAttachment],
         now: u64,
     ) -> Result<()> {
+        let attachments = (!attachments.is_empty()).then(|| to_json(&attachments));
         self.conn.execute(
-            "INSERT INTO outbox (client_id, thread_id, to_address, body, created_at, status) VALUES (?1, ?2, ?3, ?4, ?5, 'queued')",
-            params![client_id, thread_id, to, body, now],
+            "INSERT INTO outbox (client_id, thread_id, to_address, body, created_at, status, attachments) VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6)",
+            params![client_id, thread_id, to, body, now, attachments],
         )?;
         Ok(())
     }
@@ -615,11 +628,16 @@ impl Store {
             let views = items.into_iter().map(|o| MessageView {
                 id: format!("outbox:{}", o.client_id),
                 thread_id,
-                kind: MessageKind::Sms,
+                kind: if o.attachments.is_empty() {
+                    MessageKind::Sms
+                } else {
+                    MessageKind::Mms
+                },
                 direction: Direction::Out,
                 address: o.to.clone().unwrap_or_default(),
                 sender_name: None,
-                body: Some(o.body.clone()),
+                body: (!o.body.is_empty()).then(|| o.body.clone()),
+                pending_attachments: u32::try_from(o.attachments.len()).unwrap_or(u32::MAX),
                 parts: Vec::new(),
                 date: o.created_at,
                 status: Some(if o.status == SendStatus::Failed {
@@ -705,6 +723,7 @@ fn message_view(names: &HashMap<String, String>, r: &rusqlite::Row<'_>) -> Resul
         status: r.get::<_, Option<String>>(8)?.and_then(|s| enum_parse(&s)),
         client_id: r.get(9)?,
         error: r.get(10)?,
+        pending_attachments: 0,
     })
 }
 
@@ -722,7 +741,7 @@ fn fts_query(input: &str) -> Option<String> {
 }
 
 const OUTBOX_COLUMNS: &str =
-    "client_id, thread_id, to_address, body, created_at, status, message_id, error";
+    "client_id, thread_id, to_address, body, created_at, status, message_id, error, attachments";
 
 fn outbox_row(r: &rusqlite::Row<'_>) -> Result<OutboxItem> {
     Ok(OutboxItem {
@@ -734,6 +753,10 @@ fn outbox_row(r: &rusqlite::Row<'_>) -> Result<OutboxItem> {
         status: enum_parse(&r.get::<_, String>(5)?).unwrap_or(SendStatus::Queued),
         message_id: r.get(6)?,
         error: r.get(7)?,
+        attachments: r
+            .get::<_, Option<String>>(8)?
+            .map(|s| json_vec(&s))
+            .unwrap_or_default(),
     })
 }
 
@@ -887,11 +910,34 @@ mod tests {
     }
 
     #[test]
+    fn a_picture_waits_in_the_outbox_with_its_bytes() {
+        let s = Store::open_in_memory().expect("open");
+        let pic = OutgoingAttachment {
+            content_type: "image/jpeg".into(),
+            name: Some("IMG_1.jpg".into()),
+            data: "AAAA".into(),
+        };
+        s.outbox_add("c9", Some(11), None, "", std::slice::from_ref(&pic), 500)
+            .expect("outbox");
+        let pending = s.outbox_unconfirmed().expect("pending");
+        assert_eq!(pending[0].attachments, vec![pic]);
+        assert_eq!(pending[0].body, "");
+        let m = s.messages(11, None, 10).expect("messages");
+        assert_eq!(m[0].kind, MessageKind::Mms);
+        assert_eq!(m[0].body, None, "a picture alone has no text bubble");
+        assert_eq!(m[0].pending_attachments, 1);
+        // A text-only send carries no attachments and stays an SMS.
+        s.outbox_add("c10", Some(11), None, "hi", &[], 600).expect("outbox");
+        let m = s.messages(11, None, 10).expect("messages");
+        assert_eq!((m[0].kind, m[0].pending_attachments), (MessageKind::Sms, 0));
+    }
+
+    #[test]
     fn outbox_entries_show_until_the_phone_echoes_them() {
         let mut s = store();
         s.upsert_messages(&[msg("sms:1", 11, Direction::In, 100, "hi")])
             .expect("upsert");
-        s.outbox_add("c1", Some(11), None, "on my way", 500)
+        s.outbox_add("c1", Some(11), None, "on my way", &[], 500)
             .expect("outbox");
         let m = s.messages(11, None, 50).expect("messages");
         assert_eq!(m[0].id, "outbox:c1");
@@ -919,7 +965,7 @@ mod tests {
     #[test]
     fn failed_sends_stay_visible_with_their_error() {
         let s = store();
-        s.outbox_add("c2", Some(11), None, "nope", 500)
+        s.outbox_add("c2", Some(11), None, "nope", &[], 500)
             .expect("outbox");
         s.outbox_update(
             "c2",
@@ -940,7 +986,7 @@ mod tests {
     #[test]
     fn send_status_never_moves_backwards() {
         let mut s = store();
-        s.outbox_add("c3", Some(11), None, "x", 500)
+        s.outbox_add("c3", Some(11), None, "x", &[], 500)
             .expect("outbox");
         s.outbox_update("c3", SendStatus::Sent, Some("sms:5"), None)
             .expect("sent");
@@ -1173,8 +1219,9 @@ mod tests {
             .conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .expect("version");
-        assert_eq!(version, 3);
+        assert_eq!(version, MIGRATIONS.len() as i64);
         assert!(s.calls(None, 10).expect("calls").is_empty());
+        assert!(s.outbox_unconfirmed().expect("outbox with attachments column").is_empty());
         assert_eq!(found(&s, "pizza"), ["sms:1"]);
         assert_eq!(s.message_count().expect("count"), 2, "nothing was lost");
         assert_eq!(

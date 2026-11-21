@@ -93,6 +93,7 @@ async fn sync_receive_send_and_replay_after_reconnect() {
             thread_id: Some(12),
             to: None,
             body: "Sent by the engine".into(),
+            attachments: Vec::new(),
         })
         .expect("command");
     eventually("delivered", || {
@@ -120,6 +121,7 @@ async fn sync_receive_send_and_replay_after_reconnect() {
             thread_id: Some(12),
             to: None,
             body: "Written while offline".into(),
+            attachments: Vec::new(),
         })
         .expect("command");
     eventually("queued while offline", || {
@@ -189,6 +191,7 @@ async fn a_send_made_while_still_connecting_is_queued_at_once() {
             thread_id: Some(12),
             to: None,
             body: "Written while connecting".into(),
+            attachments: Vec::new(),
         })
         .expect("command");
     // Two seconds is far inside the 10 second connection timeout.

@@ -177,9 +177,17 @@ fn send(
     thread_id: Option<u64>,
     to: Option<String>,
     body: String,
+    attachments: Option<Vec<sms_bridge_core::protocol::OutgoingAttachment>>,
 ) -> Result<(), String> {
-    if body.is_empty() || body.chars().count() > 5000 {
-        return Err("Messages must be 1 to 5000 characters.".into());
+    let attachments = attachments.unwrap_or_default();
+    if body.is_empty() && attachments.is_empty() {
+        return Err("Type a message or attach a picture.".into());
+    }
+    if body.chars().count() > 5000 {
+        return Err("Messages must be at most 5000 characters.".into());
+    }
+    if attachments.len() > 10 {
+        return Err("Attach at most 10 files to one message.".into());
     }
     if thread_id.is_none() && to.as_deref().is_none_or(|t| t.trim().is_empty()) {
         return Err("Choose a conversation or enter a number.".into());
@@ -188,6 +196,7 @@ fn send(
         thread_id,
         to: to.map(|t| t.trim().to_owned()),
         body,
+        attachments,
     })
 }
 
@@ -224,6 +233,18 @@ async fn call_abilities(state: Shared<'_>) -> Result<Option<CallAbilities>, Stri
         return Ok(None);
     };
     Ok(client.status().await.ok().and_then(|s| s.status.calls))
+}
+
+/// Whether the phone can send MMS, and its size limit. `None` when its app
+/// cannot, or cannot be asked right now: no attachments, no group replies.
+#[tauri::command]
+async fn mms_abilities(
+    state: Shared<'_>,
+) -> Result<Option<sms_bridge_core::protocol::MmsAbilities>, String> {
+    let Some(client) = state.client() else {
+        return Ok(None);
+    };
+    Ok(client.status().await.ok().and_then(|s| s.status.mms))
 }
 
 /// Asks the phone to place a call. Only ever called because the user clicked
@@ -448,6 +469,7 @@ fn main() {
             mark_calls_seen,
             line,
             call_abilities,
+            mms_abilities,
             dial,
             call_action,
             call_popups_enabled,

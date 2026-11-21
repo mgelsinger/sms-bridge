@@ -111,7 +111,8 @@ async fn pair_read_and_send_against_the_mock_phone() {
         client_id: client_id.clone(),
         thread_id: Some(11),
         to: None,
-        body: "From Rust".into(),
+        body: Some("From Rust".into()),
+        attachments: None,
     });
     ws.send(WsMessage::text(serde_json::to_string(&send).expect("json")))
         .await
