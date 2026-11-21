@@ -66,6 +66,39 @@ export function parseReaction(body: string | null): Reaction | null {
   return null;
 }
 
+/** The reactions the PC offers, in the order iPhones show them. */
+export const OFFERED = ["❤️", "👍", "👎", "😂", "‼️", "❓"] as const;
+
+const VERB_FOR: Record<string, string> = { "❤️": "Loved", "👍": "Liked", "👎": "Disliked", "😂": "Laughed at", "‼️": "Emphasized", "❓": "Questioned" };
+const REMOVAL_FOR: Record<string, string> = { "❤️": "a heart", "👍": "a like", "👎": "a dislike", "😂": "a laugh", "‼️": "an exclamation", "❓": "a question mark" };
+const QUOTE_LIMIT = 100;
+
+/**
+ * The text that reacts to a message over SMS, in the form iPhones send and Google
+ * Messages shows as a reaction: `Loved "see you soon"`, `Loved an image`, or
+ * `Removed a heart from "see you soon"`. Long texts are quoted up to an ellipsis, as
+ * iPhones do. Null for a message with nothing to name.
+ */
+export function reactionText(emoji: string, target: { body: string | null; hasPicture: boolean }, remove = false): string | null {
+  const body = target.body?.trim() ?? "";
+  let object: string;
+  if (body) {
+    const chars = [...body];
+    const quoted = chars.length > QUOTE_LIMIT ? chars.slice(0, QUOTE_LIMIT).join("").trimEnd() + "…" : body;
+    object = `“${quoted}”`;
+  } else if (target.hasPicture) {
+    object = "an image";
+  } else {
+    return null;
+  }
+  if (remove) {
+    const what = REMOVAL_FOR[emoji];
+    return what ? `Removed ${what} from ${object}` : null;
+  }
+  const verb = VERB_FOR[emoji];
+  return verb ? `${verb} ${object}` : `Reacted ${emoji} to ${object}`;
+}
+
 /** iOS shortens long quotes with an ellipsis; this decides whether a quote names a body. */
 export function quoteMatches(quote: string, body: string | null): boolean {
   if (body === null) return false;

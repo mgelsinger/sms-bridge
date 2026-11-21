@@ -98,8 +98,41 @@ pub fn unique_path(dir: &Path, name: &str, exists: impl Fn(&Path) -> bool) -> Pa
     first
 }
 
+/// A link a message may hand to the browser: http or https, a host, and nothing
+/// that could end the argument or the line.
+pub fn is_web_link(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    let rest = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"));
+    match rest {
+        Some(r) => {
+            !r.is_empty()
+                && !r.starts_with('/')
+                && url.len() <= 2048
+                && !url
+                    .chars()
+                    .any(|c| c.is_whitespace() || c.is_control() || c == '"')
+        }
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_plain_web_links_may_be_opened() {
+        assert!(super::is_web_link("https://example.com/a?b=1&c=2"));
+        assert!(super::is_web_link("HTTP://Example.com"));
+        assert!(!super::is_web_link("javascript:alert(1)"));
+        assert!(!super::is_web_link("file:///C:/Windows"));
+        assert!(!super::is_web_link("https://"));
+        assert!(!super::is_web_link("https:///etc"));
+        assert!(!super::is_web_link("https://x.org/a b"));
+        assert!(!super::is_web_link("https://x.org/\"evil"));
+        assert!(!super::is_web_link("https://x.org/\nnext"));
+    }
+
     use super::*;
     use std::collections::HashSet;
 

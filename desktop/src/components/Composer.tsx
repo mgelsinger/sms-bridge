@@ -13,6 +13,9 @@ interface Props {
   mmsMaxBytes?: number | null;
   /** Turns picked files into attachments; replaceable in tests, which have no canvas. */
   prepare?: (files: File[], text: string, maxBytes: number) => Promise<OutgoingAttachment[]>;
+  /** What the box starts with, for a forwarded message. */
+  initialText?: string;
+  initialFiles?: File[];
 }
 
 const MAX_FILES = 10;
@@ -29,9 +32,11 @@ interface Picked {
  * phone can send MMS, pictures and other files can be attached with the button, pasted,
  * or dropped on the box; they are shrunk to fit the carrier's limit on Send.
  */
-export function Composer({ onSend, disabled, placeholder = "Text message", autoFocus, mmsMaxBytes = null, prepare = prepareAttachments }: Props) {
-  const [text, setText] = useState("");
-  const [picked, setPicked] = useState<Picked[]>([]);
+export function Composer({ onSend, disabled, placeholder = "Text message", autoFocus, mmsMaxBytes = null, prepare = prepareAttachments, initialText = "", initialFiles }: Props) {
+  const [text, setText] = useState(initialText);
+  const [picked, setPicked] = useState<Picked[]>(() =>
+    (initialFiles ?? []).slice(0, MAX_FILES).map((file) => ({ file, preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null })),
+  );
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -67,6 +72,10 @@ export function Composer({ onSend, disabled, placeholder = "Text message", autoF
 
   const submit = async () => {
     if (!canSend) return;
+    if (picked.length > 0 && !canAttach) {
+      setProblem("Your phone cannot send pictures right now. Remove the attachments to send the text.");
+      return;
+    }
     const body = text.trim().length > 0 ? text : "";
     setSending(true);
     setProblem(null);

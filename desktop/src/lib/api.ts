@@ -146,10 +146,11 @@ export const api = {
   loadOlder: (threadId: number) => invoke<boolean>("load_older", { threadId }),
   search: (query: string) => invoke<MessageView[]>("search", { query }),
   contacts: () => invoke<[string, string][]>("contacts"),
-  send: (body: string, target: { threadId: number } | { to: string }, attachments: OutgoingAttachment[] = []) =>
+  /** `to` with several numbers starts a group text. */
+  send: (body: string, target: { threadId: number } | { to: string | string[] }, attachments: OutgoingAttachment[] = []) =>
     invoke<void>("send", {
       threadId: "threadId" in target ? target.threadId : null,
-      to: "to" in target ? target.to : null,
+      to: "to" in target ? (Array.isArray(target.to) ? target.to : [target.to]) : null,
       body,
       attachments: attachments.length > 0 ? attachments : null,
     }),
@@ -167,6 +168,7 @@ export const api = {
   contactPhoto: (contactId: number) => invoke<ArrayBuffer>("contact_photo", { contactId }),
   saveMmsPart: (partId: number, name: string | null) => invoke<string>("save_mms_part", { partId, name }),
   showInFolder: (path: string) => invoke<void>("show_in_folder", { path }),
+  openLink: (url: string) => invoke<void>("open_link", { url }),
   computerName: () => invoke<string>("computer_name"),
   calls: (before?: number) => invoke<CallView[]>("calls", { before: before ?? null }),
   missedCalls: () => invoke<number>("missed_calls"),

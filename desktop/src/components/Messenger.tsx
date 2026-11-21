@@ -5,10 +5,19 @@ import { threadMatches } from "../lib/search";
 import { Composer } from "./Composer";
 import { Attachment } from "./Attachment";
 import { Avatar } from "./Avatar";
-import { placeReactions } from "../lib/reactions";
+import { OFFERED, placeReactions, reactionText } from "../lib/reactions";
+import { linkify } from "../lib/links";
 import styles from "./Messenger.module.css";
 
-type Selection = { kind: "thread"; id: number } | { kind: "new" } | null;
+type Selection = { kind: "thread"; id: number } | { kind: "new"; forwarded?: Forwarded } | null;
+
+/** A message's text and attachments, fetched from the phone, ready to send again. */
+async function forwardOf(m: MessageView): Promise<Forwarded> {
+  const files = await Promise.all(
+    m.parts.map(async (p, i) => new File([await api.mmsPart(p.part_id)], p.name ?? `attachment-${i + 1}`, { type: p.content_type })),
+  );
+  return { body: m.body ?? "", files };
+}
 
 /** Calling the other person of a conversation. Absent where the window has no calls. */
 export interface CallFromThread {
@@ -126,13 +135,25 @@ export function Messenger({ paired, conn, onUnpaired, call }: { paired: Paired; 
       <section className={styles.main}>
         {selection?.kind === "new" ? (
           <NewMessage
+            key={selection.forwarded ? "forward" : "new"}
+            forwarded={selection.forwarded}
             onSent={(threadId) => {
               refreshThreads();
               setSelection(threadId ? { kind: "thread", id: threadId } : null);
             }}
           />
         ) : current ? (
-          <Conversation key={current.id} thread={current} call={call} />
+          <Conversation
+            key={current.id}
+            thread={current}
+            call={call}
+            onForward={(m) =>
+              forwardOf(m).then(
+                (forwarded) => setSelection({ kind: "new", forwarded }),
+                () => window.alert("The attachments could not be fetched from the phone. Try again when it is connected."),
+              )
+            }
+          />
         ) : (
           <div className={styles.placeholder}>Choose a conversation, or press Ctrl+N to start one.</div>
         )}
@@ -184,7 +205,7 @@ function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; select
   );
 }
 
-function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThread }) {
+function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: CallFromThread; onForward?: (m: MessageView) => void }) {
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [more, setMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +292,23 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
           return (
             <div key={m.id}>
               {(!prev || !sameDay(prev.date, m.date)) && <div className={styles.dayLabel}>{dayLabel(m.date)}</div>}
-              <Bubble message={m} showSender={group && m.direction === "in" && prev?.address !== m.address} reactions={reactions.byMessage.get(m.id) ?? []} onError={setError} />
+              <Bubble
+                message={m}
+                showSender={group && m.direction === "in" && prev?.address !== m.address}
+                reactions={reactions.byMessage.get(m.id) ?? []}
+                onError={setError}
+                onReact={
+                  reactionText("❤️", { body: m.body, hasPicture: m.parts.length > 0 }) && (!group || mmsMax)
+                    ? (emoji, remove) => {
+                        const text = reactionText(emoji, { body: m.body, hasPicture: m.parts.length > 0 }, remove);
+                        if (!text) return;
+                        setError(null);
+                        api.send(text, { threadId: thread.id }).then(load, (e) => setError(errorText(e)));
+                      }
+                    : undefined
+                }
+                onForward={onForward ? () => onForward(m) : undefined}
+              />
             </div>
           );
         })}
@@ -300,12 +337,78 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
   );
 }
 
-function Bubble({ message: m, showSender, reactions, onError }: { message: MessageView; showSender: boolean; reactions: { emoji: string; from: string }[]; onError: (e: string) => void }) {
+function Bubble({
+  message: m,
+  showSender,
+  reactions,
+  onError,
+  onReact,
+  onForward,
+}: {
+  message: MessageView;
+  showSender: boolean;
+  reactions: { emoji: string; from: string }[];
+  onError: (e: string) => void;
+  /** Absent where reacting cannot be sent (the phone is not reachable, or nothing to name). */
+  onReact?: (emoji: string, remove: boolean) => void;
+  onForward?: () => void;
+}) {
   const out = m.direction === "out";
   const time = new Date(m.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const status = out ? statusText(m) : null;
+  const [picking, setPicking] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const settled = !m.id.startsWith("outbox:");
+  const mine = new Set(reactions.filter((r) => r.from === "You").map((r) => r.emoji));
+  const copy = () => {
+    navigator.clipboard
+      .writeText(m.body ?? "")
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => onError("Could not copy the text."));
+  };
   return (
     <div className={`${styles.bubbleRow} ${out ? styles.out : styles.in}`}>
+      {settled && (
+        <div className={styles.bubbleActions}>
+          {onReact && (
+            <button className={styles.actionBtn} onClick={() => setPicking((p) => !p)} aria-label="React" aria-expanded={picking} title="React">
+              ☺
+            </button>
+          )}
+          {m.body && (
+            <button className={styles.actionBtn} onClick={copy} aria-label="Copy text" title="Copy text">
+              {copied ? "Copied" : "Copy"}
+            </button>
+          )}
+          {onForward && (
+            <button className={styles.actionBtn} onClick={onForward} aria-label="Forward" title="Forward">
+              Forward
+            </button>
+          )}
+        </div>
+      )}
+      {picking && onReact && (
+        <div className={styles.reactionPicker} role="menu" aria-label="Send a reaction">
+          {OFFERED.map((e) => (
+            <button
+              key={e}
+              role="menuitemcheckbox"
+              aria-checked={mine.has(e)}
+              className={`${styles.pickerBtn} ${mine.has(e) ? styles.pickerMine : ""}`}
+              title={mine.has(e) ? "Take back your reaction" : "React"}
+              onClick={() => {
+                setPicking(false);
+                onReact(e, mine.has(e));
+              }}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
       <div className={styles.bubbleWrap}>
         {showSender && <div className={styles.sender}>{m.sender_name ?? m.address}</div>}
         <div className={`${styles.bubble} ${out ? styles.bubbleOut : styles.bubbleIn} ${m.status === "failed" ? styles.failed : ""}`}>
@@ -317,7 +420,27 @@ function Bubble({ message: m, showSender, reactions, onError }: { message: Messa
               {m.pending_attachments === 1 ? "1 attachment" : `${m.pending_attachments} attachments`}
             </div>
           )}
-          {m.body && <div className={styles.body}>{m.body}</div>}
+          {m.body && (
+            <div className={styles.body}>
+              {linkify(m.body).map((piece, i) =>
+                "href" in piece ? (
+                  <a
+                    key={i}
+                    className={styles.link}
+                    href={piece.href}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      api.openLink(piece.href).catch((err) => onError(errorText(err)));
+                    }}
+                  >
+                    {piece.text}
+                  </a>
+                ) : (
+                  <span key={i}>{piece.text}</span>
+                ),
+              )}
+            </div>
+          )}
         </div>
         {reactions.length > 0 && (
           <div className={styles.reactions} aria-label="Reactions">
@@ -364,8 +487,23 @@ function statusText(m: MessageView): string | null {
   }
 }
 
-function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
+/** What a forwarded message brings into a new one. */
+export interface Forwarded {
+  body: string;
+  files: File[];
+}
+
+const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+
+/** The conversation whose people are exactly [numbers], compared by their last ten digits. */
+export function threadFor(threads: ThreadView[], numbers: string[]): ThreadView | undefined {
+  const want = new Set(numbers.map(last10));
+  return threads.find((t) => t.participants.length === want.size && t.participants.every((p) => want.has(last10(p))));
+}
+
+function NewMessage({ onSent, forwarded }: { onSent: (threadId: number | null) => void; forwarded?: Forwarded }) {
   const [to, setTo] = useState("");
+  const [recipients, setRecipients] = useState<{ number: string; label: string }[]>([]);
   const [contacts, setContacts] = useState<[string, string][]>([]);
   const [error, setError] = useState<string | null>(null);
   const mmsMax = useMmsLimit();
@@ -374,19 +512,71 @@ function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
     api.contacts().then(setContacts).catch(() => {});
   }, []);
 
-  const matches = to.trim().length > 0 ? contacts.filter(([name, number]) => name.toLowerCase().includes(to.toLowerCase()) || number.includes(to.replace(/\D/g, ""))).slice(0, 8) : [];
+  const typed = to.trim();
+  const matches = typed.length > 0 ? contacts.filter(([name, number]) => name.toLowerCase().includes(typed.toLowerCase()) || (/\d/.test(typed) && number.includes(typed.replace(/\D/g, "")))).slice(0, 8) : [];
+
+  const add = (number: string, label: string) => {
+    setError(null);
+    setRecipients((r) => (r.some((x) => last10(x.number) === last10(number)) ? r : [...r, { number, label }]));
+    setTo("");
+  };
+
+  // Enter or a comma turns what was typed into a recipient, so several can be added.
+  const commit = (): boolean => {
+    if (!typed) return false;
+    const n = cleanNumber(typed);
+    if (n) add(n, typed);
+    else if (matches[0]) add(matches[0][1], matches[0][0]);
+    else {
+      setError("Enter a phone number, or pick a contact.");
+      return false;
+    }
+    return true;
+  };
 
   return (
     <div className={styles.conversation}>
       <header className={styles.header}>
-        <label className={styles.toLabel}>
+        <div className={styles.toLabel}>
           To:
-          <input className={styles.toInput} autoFocus value={to} onChange={(e) => setTo(e.target.value)} placeholder="Name or number" aria-label="Recipient" />
-        </label>
+          <ul className={styles.recipients} aria-label="Recipients">
+            {recipients.map((r) => (
+              <li key={r.number} className={styles.recipient}>
+                {r.label}
+                <button className={styles.inlineBtn} onClick={() => setRecipients((all) => all.filter((x) => x.number !== r.number))} aria-label={`Remove ${r.label}`}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+          <input
+            className={styles.toInput}
+            autoFocus
+            value={to}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v.endsWith(",")) {
+                setTo(v.slice(0, -1));
+                setTimeout(() => commit(), 0);
+              } else setTo(v);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && typed) {
+                e.preventDefault();
+                commit();
+              } else if (e.key === "Backspace" && !to && recipients.length > 0) {
+                setRecipients((r) => r.slice(0, -1));
+              }
+            }}
+            placeholder={recipients.length > 0 ? "Add another person" : "Name or number"}
+            aria-label="Recipient"
+          />
+        </div>
       </header>
       <div className={styles.messages}>
+        {recipients.length > 1 && <div className={styles.dayLabel}>{mmsMax ? `A group text to ${recipients.length} people` : "Your phone cannot send group texts right now"}</div>}
         {matches.map(([name, number]) => (
-          <button key={`${name}${number}`} className={styles.suggestion} onClick={() => setTo(number)}>
+          <button key={`${name}${number}`} className={styles.suggestion} onClick={() => add(number, name)}>
             <span className={styles.name}>{name}</span> <span className={styles.time}>{number}</span>
           </button>
         ))}
@@ -394,21 +584,24 @@ function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
       {error && <div className={styles.error} role="alert">{error}</div>}
       <Composer
         mmsMaxBytes={mmsMax}
+        initialText={forwarded?.body}
+        initialFiles={forwarded?.files}
         onSend={async (body, attachments) => {
-          const number = cleanNumber(to);
-          if (!number) {
+          const typedNumber = typed ? cleanNumber(typed) : null;
+          const numbers = [...recipients.map((r) => r.number), ...(typedNumber && !recipients.some((r) => last10(r.number) === last10(typedNumber)) ? [typedNumber] : [])];
+          if (numbers.length === 0) {
             setError("Enter a phone number, or pick a contact.");
             throw new Error("no number");
           }
+          if (numbers.length > 1 && !mmsMax) {
+            setError("Your phone cannot send group texts right now.");
+            throw new Error("no mms");
+          }
           try {
             setError(null);
-            await api.send(body, { to: number }, attachments);
+            await api.send(body, { to: numbers }, attachments);
             // The thread id is known once the phone echoes the message; find it then.
-            setTimeout(async () => {
-              const threads = await api.threads();
-              const t = threads.find((x) => x.participants.length === 1 && x.participants[0]?.replace(/\D/g, "").endsWith(number.replace(/\D/g, "").slice(-10)));
-              onSent(t?.id ?? null);
-            }, 1500);
+            setTimeout(async () => onSent(threadFor(await api.threads(), numbers)?.id ?? null), 1500);
           } catch (e) {
             setError(errorText(e));
             throw e;

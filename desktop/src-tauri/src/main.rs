@@ -175,7 +175,7 @@ fn contacts(state: Shared<'_>) -> Result<Vec<(String, String)>, String> {
 fn send(
     state: Shared<'_>,
     thread_id: Option<u64>,
-    to: Option<String>,
+    to: Option<Vec<String>>,
     body: String,
     attachments: Option<Vec<sms_bridge_core::protocol::OutgoingAttachment>>,
 ) -> Result<(), String> {
@@ -189,12 +189,25 @@ fn send(
     if attachments.len() > 10 {
         return Err("Attach at most 10 files to one message.".into());
     }
-    if thread_id.is_none() && to.as_deref().is_none_or(|t| t.trim().is_empty()) {
+    // Several recipients, for a new group text, arrive as a list.
+    let to: Vec<String> = to
+        .unwrap_or_default()
+        .into_iter()
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if thread_id.is_none() && to.is_empty() {
         return Err("Choose a conversation or enter a number.".into());
+    }
+    if to.len() > 20 {
+        return Err("A group text can go to at most 20 people.".into());
+    }
+    if to.iter().any(|t| t.contains(',')) {
+        return Err("Enter each number on its own.".into());
     }
     state.command(Command::Send {
         thread_id,
-        to: to.map(|t| t.trim().to_owned()),
+        to: (!to.is_empty()).then(|| to.join(",")),
         body,
         attachments,
     })
@@ -364,6 +377,25 @@ async fn save_mms_part(
     Ok(path.display().to_string())
 }
 
+/// Opens a web link from a message in the default browser, because the user
+/// clicked it. The app itself fetches nothing.
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+    if !sms_bridge_core::attachments::is_web_link(&url) {
+        return Err("Only web links can be opened.".into());
+    }
+    #[cfg(windows)]
+    {
+        // The URL handler, not a shell: nothing in the link is read as a command.
+        std::process::Command::new("rundll32.exe")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(&url)
+            .spawn()
+            .map_err(err)?;
+    }
+    Ok(())
+}
+
 /// Opens Explorer with a saved file selected.
 #[tauri::command]
 fn show_in_folder(path: String) -> Result<(), String> {
@@ -476,6 +508,7 @@ fn main() {
             save_mms_part,
             contact_photo,
             show_in_folder,
+            open_link,
             computer_name,
             calls,
             missed_calls,

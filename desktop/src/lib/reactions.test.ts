@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReaction, placeReactions, quoteMatches, type ReactionMessage } from "./reactions";
+import { OFFERED, parseReaction, placeReactions, quoteMatches, reactionText, type ReactionMessage } from "./reactions";
 
 const msg = (id: string, date: number, body: string | null, extra: Partial<ReactionMessage> = {}): ReactionMessage => ({
   id,
@@ -34,6 +34,33 @@ describe("parseReaction", () => {
     for (const body of ["Liked it a lot", "Loved the movie", "Laughed at him lol", "Reacted badly", "Removed the tree from the yard", null, ""]) {
       expect(parseReaction(body)).toBeNull();
     }
+  });
+});
+
+describe("reactionText", () => {
+  it("writes the form iPhones send, which this app and Google Messages read back", () => {
+    expect(reactionText("❤️", { body: "see you soon", hasPicture: false })).toBe("Loved “see you soon”");
+    expect(reactionText("😂", { body: "that dog", hasPicture: false })).toBe("Laughed at “that dog”");
+    expect(reactionText("❤️", { body: null, hasPicture: true })).toBe("Loved an image");
+    expect(reactionText("🔥", { body: "game", hasPicture: false })).toBe("Reacted 🔥 to “game”");
+    expect(reactionText("❤️", { body: "see you soon", hasPicture: false }, true)).toBe("Removed a heart from “see you soon”");
+    expect(reactionText("❤️", { body: null, hasPicture: false })).toBeNull();
+  });
+
+  it("round-trips through the parser for every offered reaction", () => {
+    for (const emoji of OFFERED) {
+      const sent = reactionText(emoji, { body: "dinner at 7", hasPicture: false });
+      expect(parseReaction(sent)).toEqual({ emoji, target: "dinner at 7", attachment: null, removed: false });
+      expect(parseReaction(reactionText(emoji, { body: "dinner at 7", hasPicture: false }, true))?.removed).toBe(true);
+    }
+  });
+
+  it("quotes a long text up to an ellipsis that still finds the message", () => {
+    const long = "a".repeat(150);
+    const sent = reactionText("👍", { body: long, hasPicture: false });
+    const quote = parseReaction(sent)?.target ?? "";
+    expect(quote.endsWith("…")).toBe(true);
+    expect(quoteMatches(quote, long)).toBe(true);
   });
 });
 

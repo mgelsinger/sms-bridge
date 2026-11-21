@@ -25,6 +25,9 @@ vi.mock("../lib/api", async (original) => {
       messages: vi.fn().mockResolvedValue([]),
       mmsAbilities: vi.fn().mockResolvedValue(null),
       send: vi.fn().mockResolvedValue(undefined),
+      contacts: vi.fn().mockResolvedValue([]),
+      mmsPart: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      contactPhoto: vi.fn().mockRejectedValue("none"),
     },
     events: { conn: never, threadsChanged: never, threadChanged: never, deviceStatus: never },
   };
@@ -118,6 +121,83 @@ describe("status menu", () => {
     fireEvent.click(screen.getByLabelText("Connection options"));
     expect(await screen.findByRole("menuitemcheckbox", { name: "Start with Windows: off" })).toBeTruthy();
     alert.mockRestore();
+  });
+});
+
+describe("reacting, forwarding and group texts from the PC", () => {
+  const alex = { id: 1, title: "Alex Rivera", participants: ["+15855550101"], snippet: null, date: 0, unread: 0 };
+  const view = (id: string, date: number, body: string | null, extra: Record<string, unknown> = {}) => ({
+    id, thread_id: 1, kind: "sms" as const, direction: "in" as const, address: "+15855550101", sender_name: "Alex Rivera",
+    body, parts: [], date, status: null, client_id: null, error: null, ...extra,
+  });
+  URL.createObjectURL = vi.fn(() => "blob:test");
+  URL.revokeObjectURL = vi.fn();
+
+  async function openAlex(messages: ReturnType<typeof view>[]) {
+    vi.mocked(api.threads).mockResolvedValue([alex]);
+    vi.mocked(api.messages).mockResolvedValue(messages);
+    vi.mocked(api.send).mockClear();
+    render(<Messenger paired={paired} conn={{ state: "connected", device_name: "Pixel" }} onUnpaired={() => {}} />);
+    fireEvent.click(await screen.findByText("Alex Rivera"));
+    // The oldest message is never a reaction to something later, so it always has a bubble.
+    await screen.findByText(messages[messages.length - 1]?.body ?? "");
+  }
+
+  it("sends a reaction as the text iPhones and Google Messages read", async () => {
+    await openAlex([view("sms:1", 10, "see you soon")]);
+    fireEvent.click(screen.getByRole("button", { name: "React" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "❤️" }));
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Loved “see you soon”", { threadId: 1 }));
+  });
+
+  it("takes back a reaction you already sent", async () => {
+    await openAlex([view("sms:2", 20, "Loved “see you soon”", { direction: "out", address: "+15855550101" }), view("sms:1", 10, "see you soon")]);
+    expect(screen.getByLabelText("Reactions").textContent).toBe("❤️");
+    fireEvent.click(screen.getByRole("button", { name: "React" }));
+    const heart = screen.getByRole("menuitemcheckbox", { name: "❤️" });
+    expect(heart.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(heart);
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Removed a heart from “see you soon”", { threadId: 1 }));
+  });
+
+  it("forwards a message's text and picture into a new message", async () => {
+    vi.mocked(api.mmsAbilities).mockResolvedValue({ send: true, max_bytes: 1_048_576 });
+    await openAlex([view("mms:1", 10, "look", { kind: "mms", parts: [{ part_id: 9, content_type: "image/jpeg", size: 4, name: "dog.jpg" }] })]);
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+    await screen.findByLabelText("Recipient");
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe("look");
+    expect(api.mmsPart).toHaveBeenCalledWith(9);
+    expect(screen.getByRole("list", { name: "Attachments" }).children).toHaveLength(1);
+  });
+
+  it("starts a group text to everyone added", async () => {
+    vi.mocked(api.mmsAbilities).mockResolvedValue({ send: true, max_bytes: 1_048_576 });
+    vi.mocked(api.threads).mockResolvedValue([]);
+    vi.mocked(api.send).mockClear();
+    render(<Messenger paired={paired} conn={{ state: "connected", device_name: "Pixel" }} onUnpaired={() => {}} />);
+    fireEvent.click(screen.getByLabelText("New message"));
+    const to = screen.getByLabelText("Recipient");
+    fireEvent.change(to, { target: { value: "585-555-0101" } });
+    fireEvent.keyDown(to, { key: "Enter" });
+    fireEvent.change(to, { target: { value: "5855550177" } });
+    fireEvent.keyDown(to, { key: "Enter" });
+    expect(screen.getByRole("list", { name: "Recipients" }).children).toHaveLength(2);
+    expect(await screen.findByText("A group text to 2 people")).toBeTruthy();
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "Dinner at 7?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Dinner at 7?", { to: ["5855550101", "5855550177"] }, []));
+  });
+});
+
+describe("threadFor", () => {
+  it("finds the conversation with exactly those people, however the numbers are written", async () => {
+    const { threadFor } = await import("./Messenger");
+    const t = (id: number, participants: string[]) => ({ id, participants, title: "", snippet: null, date: 0, unread: 0 });
+    const threads = [t(1, ["+15855550101"]), t(2, ["+15855550101", "+15855550177"])];
+    expect(threadFor(threads, ["5855550177", "585-555-0101"])?.id).toBe(2);
+    expect(threadFor(threads, ["5855550101"])?.id).toBe(1);
+    expect(threadFor(threads, ["5855550199"])).toBeUndefined();
   });
 });
 

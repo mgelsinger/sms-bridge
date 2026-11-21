@@ -110,6 +110,7 @@ pub trait Events: Send + Sync + 'static {
 #[derive(Debug)]
 pub enum Command {
     /// `body` may be empty when there are attachments; then it is not sent.
+    /// `to` holds one number, or several separated by commas for a group text.
     Send {
         thread_id: Option<u64>,
         to: Option<String>,
@@ -786,7 +787,16 @@ fn send_frame(
 ) -> Envelope {
     let (thread_id, to) = match (thread_id, to) {
         (Some(t), _) => (Some(t), None),
-        (None, Some(addr)) => (None, Some(vec![addr])),
+        // Several recipients (a new group text) are stored comma-separated.
+        (None, Some(addr)) => (
+            None,
+            Some(
+                addr.split(',')
+                    .map(|a| a.trim().to_owned())
+                    .filter(|a| !a.is_empty())
+                    .collect(),
+            ),
+        ),
         (None, None) => (None, Some(Vec::new())), // Rejected by the phone; recorded as failed.
     };
     Envelope::new(Frame::Send {
@@ -842,6 +852,27 @@ mod tests {
 
     /// With the earlier 60 second cap, the app sat on "retrying in 32 s" long after
     /// the phone was back.
+    #[test]
+    fn a_new_group_text_goes_to_every_number() {
+        let env = send_frame(
+            "c".into(),
+            None,
+            Some("+15855550101, +15855550177".into()),
+            "Dinner at 7?".into(),
+            Vec::new(),
+        );
+        match env.frame {
+            Frame::Send { to, thread_id, .. } => {
+                assert_eq!(thread_id, None);
+                assert_eq!(
+                    to,
+                    Some(vec!["+15855550101".to_owned(), "+15855550177".to_owned()])
+                );
+            }
+            other => panic!("not a send: {other:?}"),
+        }
+    }
+
     #[test]
     fn the_wait_between_retries_doubles_but_stays_short() {
         let mut wait = Duration::from_secs(1);
