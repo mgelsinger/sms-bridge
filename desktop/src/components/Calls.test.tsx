@@ -17,6 +17,7 @@ const entry = (id: number, over: Partial<CallView>): CallView => ({
   date: 1_762_981_200_000,
   duration_s: 187,
   seen: true,
+  photo_contact: null,
   ...over,
 });
 
@@ -58,6 +59,27 @@ describe("call history", () => {
     ]);
     // A withheld number cannot be called back.
     expect(within(rows[2]!).queryByRole("button", { name: /^Call / })).toBeNull();
+  });
+
+  it("narrows the list by search and by the Missed filter", () => {
+    const calls = model({
+      history: [
+        entry(3, { kind: "missed", duration_s: 0 }),
+        entry(2, { name: null, number: "+15855550177", kind: "out", duration_s: 42 }),
+        entry(1, { name: "Sam", number: "+15855550103" }),
+      ],
+    });
+    render(<Calls calls={calls} focusDial={0} />);
+    const list = () => within(screen.getByRole("region", { name: "Call history" })).getAllByRole("listitem").map((r) => r.textContent ?? "");
+    fireEvent.click(screen.getByRole("button", { name: "Missed" }));
+    expect(list()).toEqual([expect.stringContaining("Alex RiveraMissed")]);
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.change(screen.getByLabelText("Search calls"), { target: { value: "0177" } });
+    expect(list()).toEqual([expect.stringContaining("+15855550177")]);
+    fireEvent.change(screen.getByLabelText("Search calls"), { target: { value: "nobody" } });
+    expect(list()).toEqual(["No calls match."]);
+    fireEvent.keyDown(screen.getByLabelText("Search calls"), { key: "Escape" });
+    expect(list()).toHaveLength(3);
   });
 
   it("calls back from a row with that row's number", () => {

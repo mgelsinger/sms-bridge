@@ -1,5 +1,6 @@
 // Display helpers for calls. Pure, so they are unit tested.
-import type { CallAbilities, CallKind, Line } from "./api";
+import type { CallAbilities, CallKind, CallView, Line } from "./api";
+import { threadMatches } from "./search";
 
 /** "0:42", "12:05", "1:02:03". */
 export function callDuration(seconds: number): string {
@@ -27,6 +28,22 @@ export function callSummary(kind: CallKind, durationSeconds: number): string {
     case "voicemail":
       return "Voicemail";
   }
+}
+
+export type CallFilter = "all" | "missed";
+
+/**
+ * The history entries to show for a search and a filter. The search finds a
+ * call by contact name or by number the same way the texts search does; a
+ * withheld number is found by neither. "Missed" counts declined calls too:
+ * both are calls nobody talked on.
+ */
+export function filterCalls(history: CallView[], query: string, filter: CallFilter): CallView[] {
+  return history.filter((c) => {
+    if (filter === "missed" && c.kind !== "missed" && c.kind !== "rejected") return false;
+    if (!query.trim()) return true;
+    return threadMatches({ title: c.name ?? c.number ?? "", participants: c.number ? [c.number] : [] }, query);
+  });
 }
 
 /** Who a call is with: the contact, else the number, else that it was withheld. */

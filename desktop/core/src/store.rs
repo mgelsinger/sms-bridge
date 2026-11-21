@@ -169,6 +169,8 @@ pub struct CallView {
     pub date: u64,
     pub duration_s: u64,
     pub seen: bool,
+    /// When the number's contact has a photo on the phone: that contact's id.
+    pub photo_contact: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -494,6 +496,7 @@ impl Store {
     /// Call history, newest first. `before` pages back by date.
     pub fn calls(&self, before: Option<u64>, limit: u32) -> Result<Vec<CallView>> {
         let names = self.names()?;
+        let photos = self.photos()?;
         let mut stmt = self.conn.prepare(
             "SELECT id, number, kind, date, duration_s, seen FROM calls
              WHERE ?1 IS NULL OR date < ?1 ORDER BY date DESC, id DESC LIMIT ?2",
@@ -504,6 +507,7 @@ impl Store {
             Ok(CallView {
                 id: r.get(0)?,
                 name: number.as_ref().and_then(|n| names.get(n).cloned()),
+                photo_contact: number.as_ref().and_then(|n| photos.get(n).copied()),
                 number,
                 // A kind from a newer phone that this build does not know is shown as a plain inbound call.
                 kind: CallKind::parse(&kind).unwrap_or(CallKind::In),
@@ -816,6 +820,49 @@ mod tests {
         }])
         .expect("contacts");
         s
+    }
+
+    #[test]
+    fn a_call_row_points_at_its_contacts_photo() {
+        let mut s = Store::open_in_memory().expect("store");
+        s.replace_contacts(&[
+            Contact {
+                id: 7,
+                name: "Alex Rivera".into(),
+                numbers: vec!["+15855550101".into()],
+                photo: Some(true),
+            },
+            Contact {
+                id: 8,
+                name: "Sam".into(),
+                numbers: vec!["+15855550103".into()],
+                photo: None,
+            },
+        ])
+        .expect("contacts");
+        s.upsert_calls(
+            &[
+                call("call:1", Some("+15855550101"), CallKind::In, 100),
+                call("call:2", Some("+15855550103"), CallKind::Out, 200),
+                call("call:3", None, CallKind::Missed, 300),
+            ],
+            true,
+        )
+        .expect("calls");
+        let photo = |id: &str| {
+            s.calls(None, 10)
+                .expect("calls")
+                .into_iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.photo_contact)
+        };
+        assert_eq!(photo("call:1"), Some(7));
+        assert_eq!(photo("call:2"), None, "a contact without a photo");
+        assert_eq!(
+            photo("call:3"),
+            None,
+            "a withheld number has no one's photo"
+        );
     }
 
     #[test]

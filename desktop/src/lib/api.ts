@@ -108,6 +108,8 @@ export interface CallView {
   date: number;
   duration_s: number;
   seen: boolean;
+  /** When the number's contact has a photo on the phone: that contact's id. */
+  photo_contact: number | null;
 }
 
 /** What the phone's line is doing. It describes the line, not one call. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { callDuration, callSummary, callerLabel, callsUnavailable, dialable, lineHeadline } from "./calls";
-import type { Line } from "./api";
+import { callDuration, callSummary, callerLabel, callsUnavailable, dialable, filterCalls, lineHeadline } from "./calls";
+import type { CallView, Line } from "./api";
 
 describe("callDuration", () => {
   it("shows minutes and seconds, and hours only when there are any", () => {
@@ -54,6 +54,46 @@ describe("lineHeadline", () => {
     expect(lineHeadline(line("active", "in"), "Alex")).toBe("On a call with Alex");
     expect(lineHeadline(line("active", "out"), "Alex")).toBe("Call to Alex");
     expect(lineHeadline(line("active", "out"), null)).toBe("Call in progress on the phone");
+  });
+});
+
+describe("filterCalls", () => {
+  const call = (id: number, over: Partial<CallView>): CallView => ({
+    id: `call:${id}`,
+    number: "+15855550101",
+    name: "Alex Rivera",
+    kind: "in",
+    date: id,
+    duration_s: 10,
+    seen: true,
+    photo_contact: null,
+    ...over,
+  });
+  const history = [
+    call(1, {}),
+    call(2, { kind: "missed", duration_s: 0 }),
+    call(3, { name: null, number: "+15855550177", kind: "rejected", duration_s: 0 }),
+    call(4, { name: "José Ortiz", number: "+15855550188", kind: "out" }),
+    call(5, { name: null, number: null, kind: "missed", duration_s: 0 }),
+  ];
+  const ids = (list: CallView[]) => list.map((c) => c.id);
+
+  it("shows everything with no search and no filter", () => {
+    expect(ids(filterCalls(history, "", "all"))).toEqual(["call:1", "call:2", "call:3", "call:4", "call:5"]);
+  });
+  it("keeps missed and declined calls under Missed", () => {
+    expect(ids(filterCalls(history, "", "missed"))).toEqual(["call:2", "call:3", "call:5"]);
+  });
+  it("finds calls by name the way the texts search does", () => {
+    expect(ids(filterCalls(history, "riv", "all"))).toEqual(["call:1", "call:2"]);
+    expect(ids(filterCalls(history, "jose", "all"))).toEqual(["call:4"]);
+  });
+  it("finds calls by number typed any way", () => {
+    expect(ids(filterCalls(history, "(585) 555-0177", "all"))).toEqual(["call:3"]);
+    expect(ids(filterCalls(history, "0101", "missed"))).toEqual(["call:2"]);
+  });
+  it("never matches a withheld number", () => {
+    expect(filterCalls(history, "private", "all")).toEqual([]);
   });
 });
 

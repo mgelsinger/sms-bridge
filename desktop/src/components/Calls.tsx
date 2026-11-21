@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { callSummary, callerLabel, callsUnavailable, dialable } from "../lib/calls";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { callSummary, callerLabel, callsUnavailable, dialable, filterCalls, type CallFilter } from "../lib/calls";
 import { listTime } from "../lib/format";
 import type { CallsModel } from "../lib/useCalls";
+import { Avatar } from "./Avatar";
 import styles from "./Calls.module.css";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
@@ -14,7 +15,10 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 export function Calls({ calls, focusDial }: { calls: CallsModel; focusDial: number }) {
   const { history, abilities, connected, line, pending, error, missed, markSeen } = calls;
   const [number, setNumber] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<CallFilter>("all");
   const input = useRef<HTMLInputElement>(null);
+  const shown = useMemo(() => filterCalls(history, query, filter), [history, query, filter]);
 
   // Looking at the history is what makes a missed call seen.
   useEffect(() => {
@@ -44,17 +48,41 @@ export function Calls({ calls, focusDial }: { calls: CallsModel; focusDial: numb
   return (
     <div className={styles.calls}>
       <section className={styles.history} aria-label="Call history">
-        <h2 className={styles.title}>Calls</h2>
+        <div className={styles.top}>
+          <h2 className={styles.title}>Calls</h2>
+          <div className={styles.filters} role="group" aria-label="Show">
+            <button aria-pressed={filter === "all"} className={filter === "all" ? styles.on : ""} onClick={() => setFilter("all")}>
+              All
+            </button>
+            <button aria-pressed={filter === "missed"} className={filter === "missed" ? styles.on : ""} onClick={() => setFilter("missed")}>
+              Missed
+            </button>
+          </div>
+        </div>
+        <input
+          className={styles.search}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setQuery("");
+          }}
+          placeholder="Search calls by name or number"
+          aria-label="Search calls"
+        />
         {unavailable && <p className={styles.notice}>{unavailable}</p>}
         {connected && abilities && !abilities.history && (abilities.dial || abilities.end) && (
           <p className={styles.notice}>The phone does not share its call history. Allow it in SMS Bridge on the phone to see calls here.</p>
         )}
         <ul className={styles.list}>
           {history.length === 0 && <li className={styles.empty}>No calls yet.</li>}
-          {history.map((c) => {
+          {history.length > 0 && shown.length === 0 && <li className={styles.empty}>No calls match.</li>}
+          {shown.map((c) => {
             const who = callerLabel(c.name, c.number);
             return (
               <li key={c.id} className={styles.row}>
+                <span className={styles.face}>
+                  <Avatar title={c.name ?? ""} contactId={c.photo_contact} />
+                </span>
                 <button className={styles.entry} onClick={() => c.number && setNumber(c.number)} disabled={!c.number} title={c.number ? "Put this number in the dial pad" : undefined}>
                   <span className={`${styles.who} ${c.kind === "missed" ? styles.missed : ""}`}>{who}</span>
                   <span className={styles.detail}>

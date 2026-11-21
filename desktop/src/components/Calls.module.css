@@ -17,11 +17,43 @@
   background: var(--panel);
   border-right: 1px solid var(--line);
 }
-.title {
-  margin: 0;
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 14px 16px 8px;
+}
+.title {
+  flex: 1;
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+.filters {
+  display: flex;
+  gap: 4px;
+}
+.filters button {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  padding: 2px 12px;
+  font-size: 12px;
+}
+.filters .on {
+  background: var(--selected);
+  font-weight: 600;
+}
+.search {
+  margin: 0 16px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+.face {
+  display: flex;
+  padding-left: 16px;
 }
 .notice {
   margin: 0 16px 8px;
@@ -54,7 +86,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 16px;
+  padding: 8px 6px;
   border: none;
   background: transparent;
   text-align: left;
