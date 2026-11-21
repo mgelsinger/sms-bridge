@@ -1,10 +1,77 @@
+.wrap {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.dragging {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
 .composer {
   display: flex;
   gap: 8px;
   align-items: flex-end;
   padding: 10px 14px;
-  border-top: 1px solid var(--line);
+}
+.attach {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 20px;
+  line-height: 1;
+}
+.picked {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px 0;
+}
+.chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.thumb {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 7px;
+}
+.fileName {
+  font-size: 12px;
+  padding: 8px 22px 8px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.removeBtn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
   background: var(--panel);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+.problem {
+  color: var(--danger);
+  font-size: 12px;
+  padding: 6px 14px 0;
 }
 .input {
   flex: 1;

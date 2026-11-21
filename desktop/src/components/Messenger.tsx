@@ -140,6 +140,29 @@ export function Messenger({ paired, conn, onUnpaired, call }: { paired: Paired; 
   );
 }
 
+/**
+ * The phone's MMS limit when it can send MMS, else null. Asked once when a
+ * conversation opens, and again whenever the phone's status changes.
+ */
+function useMmsLimit(): number | null {
+  const [max, setMax] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const ask = () =>
+      api
+        .mmsAbilities()
+        .then((m) => alive && setMax(m?.send ? m.max_bytes : null))
+        .catch(() => {});
+    ask();
+    const off = events.deviceStatus((s) => setMax(s.mms?.send ? s.mms.max_bytes : null));
+    return () => {
+      alive = false;
+      void off.then((f) => f());
+    };
+  }, []);
+  return max;
+}
+
 function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; selected: boolean; onOpen: () => void }) {
   return (
     <li>
@@ -215,6 +238,7 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
   };
 
   const group = thread.participants.length > 1;
+  const mmsMax = useMmsLimit();
 
   return (
     <div className={styles.conversation}>
@@ -248,15 +272,17 @@ function Conversation({ thread, call }: { thread: ThreadView; call?: CallFromThr
         })}
       </div>
       {error && <div className={styles.error} role="alert">{error}</div>}
-      {group ? (
-        <div className={styles.notice}>Replying to group conversations needs MMS, which arrives in a later version.</div>
+      {group && !mmsMax ? (
+        <div className={styles.notice}>Replying to a group needs your phone to send MMS, which it does not offer right now.</div>
       ) : (
         <Composer
           autoFocus
-          onSend={async (body) => {
+          mmsMaxBytes={mmsMax}
+          placeholder={group ? "Message everyone" : undefined}
+          onSend={async (body, attachments) => {
             try {
               setError(null);
-              await api.send(body, { threadId: thread.id });
+              await api.send(body, { threadId: thread.id }, attachments);
               load();
             } catch (e) {
               setError(errorText(e));
@@ -281,6 +307,11 @@ function Bubble({ message: m, showSender, reactions, onError }: { message: Messa
           {m.parts.map((p) => (
             <Attachment key={p.part_id} part={p} />
           ))}
+          {(m.pending_attachments ?? 0) > 0 && (
+            <div className={styles.attachment}>
+              {m.pending_attachments === 1 ? "1 attachment" : `${m.pending_attachments} attachments`}
+            </div>
+          )}
           {m.body && <div className={styles.body}>{m.body}</div>}
         </div>
         {reactions.length > 0 && (
@@ -332,6 +363,7 @@ function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
   const [to, setTo] = useState("");
   const [contacts, setContacts] = useState<[string, string][]>([]);
   const [error, setError] = useState<string | null>(null);
+  const mmsMax = useMmsLimit();
 
   useEffect(() => {
     api.contacts().then(setContacts).catch(() => {});
@@ -356,7 +388,8 @@ function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
       </div>
       {error && <div className={styles.error} role="alert">{error}</div>}
       <Composer
-        onSend={async (body) => {
+        mmsMaxBytes={mmsMax}
+        onSend={async (body, attachments) => {
           const number = cleanNumber(to);
           if (!number) {
             setError("Enter a phone number, or pick a contact.");
@@ -364,7 +397,7 @@ function NewMessage({ onSent }: { onSent: (threadId: number | null) => void }) {
           }
           try {
             setError(null);
-            await api.send(body, { to: number });
+            await api.send(body, { to: number }, attachments);
             // The thread id is known once the phone echoes the message; find it then.
             setTimeout(async () => {
               const threads = await api.threads();

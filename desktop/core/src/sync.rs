@@ -109,10 +109,12 @@ pub trait Events: Send + Sync + 'static {
 
 #[derive(Debug)]
 pub enum Command {
+    /// `body` may be empty when there are attachments; then it is not sent.
     Send {
         thread_id: Option<u64>,
         to: Option<String>,
         body: String,
+        attachments: Vec<OutgoingAttachment>,
     },
     /// Re-send a failed message under a new client_id (the phone would otherwise
     /// return the remembered failure).
@@ -466,27 +468,37 @@ impl Core {
 
     /// Records a send in the outbox. Returns the frame to send now, if connected.
     fn queue(&self, cmd: Command) -> rusqlite::Result<Option<Envelope>> {
-        let (thread_id, to, body) = match cmd {
+        let (thread_id, to, body, attachments) = match cmd {
             Command::Send {
                 thread_id,
                 to,
                 body,
-            } => (thread_id, to, body),
+                attachments,
+            } => (thread_id, to, body, attachments),
             Command::Retry { client_id } => {
                 let Some(old) = self.db(|s| s.outbox_get(&client_id))? else {
                     return Ok(None);
                 };
                 self.db(|s| s.outbox_remove(&client_id))?;
-                (old.thread_id, old.to, old.body)
+                (old.thread_id, old.to, old.body, old.attachments)
             }
             _ => return Ok(None),
         };
         let client_id = uuid::Uuid::new_v4().to_string();
-        self.db(|s| s.outbox_add(&client_id, thread_id, to.as_deref(), &body, now_ms()))?;
+        self.db(|s| {
+            s.outbox_add(
+                &client_id,
+                thread_id,
+                to.as_deref(),
+                &body,
+                &attachments,
+                now_ms(),
+            )
+        })?;
         if let Some(t) = thread_id {
             self.events.thread_changed(t);
         }
-        Ok(Some(send_frame(client_id, thread_id, to, body)))
+        Ok(Some(send_frame(client_id, thread_id, to, body, attachments)))
     }
 
     /// Connects, reads `hello`, and catches up: everything before live frames.
@@ -609,7 +621,13 @@ impl Core {
         for item in self.db(|s| s.outbox_unconfirmed())? {
             send(
                 sink,
-                &send_frame(item.client_id, item.thread_id, item.to, item.body),
+                &send_frame(
+                    item.client_id,
+                    item.thread_id,
+                    item.to,
+                    item.body,
+                    item.attachments,
+                ),
             )
             .await?;
         }
@@ -758,6 +776,7 @@ fn send_frame(
     thread_id: Option<u64>,
     to: Option<String>,
     body: String,
+    attachments: Vec<OutgoingAttachment>,
 ) -> Envelope {
     let (thread_id, to) = match (thread_id, to) {
         (Some(t), _) => (Some(t), None),
@@ -768,7 +787,8 @@ fn send_frame(
         client_id,
         thread_id,
         to,
-        body,
+        body: (!body.is_empty()).then_some(body),
+        attachments: (!attachments.is_empty()).then_some(attachments),
     })
 }
 

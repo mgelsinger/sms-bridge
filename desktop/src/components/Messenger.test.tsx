@@ -23,6 +23,8 @@ vi.mock("../lib/api", async (original) => {
       reconnect: vi.fn().mockResolvedValue(undefined),
       search: vi.fn().mockResolvedValue([]),
       messages: vi.fn().mockResolvedValue([]),
+      mmsAbilities: vi.fn().mockResolvedValue(null),
+      send: vi.fn().mockResolvedValue(undefined),
     },
     events: { conn: never, threadsChanged: never, threadChanged: never, deviceStatus: never },
   };
@@ -116,6 +118,33 @@ describe("status menu", () => {
     fireEvent.click(screen.getByLabelText("Connection options"));
     expect(await screen.findByRole("menuitemcheckbox", { name: "Start with Windows: off" })).toBeTruthy();
     alert.mockRestore();
+  });
+});
+
+describe("group conversations", () => {
+  const group = { id: 2, title: "Alex Rivera, Sam", participants: ["+15855550101", "+15855550103"], snippet: null, date: 0, unread: 0 };
+
+  async function openGroup() {
+    vi.mocked(api.threads).mockResolvedValue([group]);
+    render(<Messenger paired={paired} conn={{ state: "connected", device_name: "Pixel" }} onUnpaired={() => {}} />);
+    fireEvent.click(await screen.findByText("Alex Rivera, Sam"));
+  }
+
+  it("stay read-only when the phone cannot send MMS", async () => {
+    vi.mocked(api.mmsAbilities).mockResolvedValue(null);
+    await openGroup();
+    expect(await screen.findByText(/Replying to a group needs your phone to send MMS/)).toBeTruthy();
+    expect(screen.queryByLabelText("Message")).toBeNull();
+  });
+
+  it("can be replied to, and with a picture, when it can", async () => {
+    vi.mocked(api.mmsAbilities).mockResolvedValue({ send: true, max_bytes: 1_048_576 });
+    await openGroup();
+    const box = (await screen.findByPlaceholderText("Message everyone")) as HTMLTextAreaElement;
+    expect(screen.getByLabelText("Attach a picture or file")).toBeTruthy();
+    fireEvent.change(box, { target: { value: "Dinner at 7?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Dinner at 7?", { threadId: 2 }, []));
   });
 });
 
