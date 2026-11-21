@@ -10,8 +10,9 @@ Last updated: 2026-11-20.
   hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); results and
   what was found on the way are in [PHASE-2.md](PHASE-2.md) and
   [PHASE-3.md](PHASE-3.md).
-- Running on the phone: dev-969c085; on the PC: dev-0351f88, both since
-  2026-11-20 (dev-5e591cf from 2026-11-11 before that), paired, and in
+- Running on both the phone and the PC: dev-fcd3328, since the evening of
+  2026-11-20 (the phone had dev-969c085 and the PC dev-0351f88 earlier that
+  day, both dev-5e591cf from 2026-11-11 before that), paired, and in
   ordinary daily use. Texts arrive overnight with the taskbar dot; texts sent
   from the PC go out once.
 - Mickey will not run the Wi-Fi-drop-mid-send check on his real phone. It is
@@ -40,10 +41,18 @@ Last updated: 2026-11-20.
   phases 6 (calls over the bridge, voice on the phone) and 7 (voice on the PC
   over Bluetooth hands-free). Scope stays Android and Windows. Phase 6 is
   built and on `main` as far as CI can prove it: protocol, mock phone, phone
-  app, PC core, PC window. It is not on Mickey's devices and no real call has
-  gone through it. Phase 7 is not started; a throwaway program for its
-  deciding experiment is built. What is left is all at the desk:
-  [CALLS-DESK.md](CALLS-DESK.md).
+  app, PC core, PC window. It went onto both devices on 2026-11-20 as
+  dev-fcd3328 (APK with `adb install -r`, installer with `/S`, the PC store
+  backed up first to
+  `%LOCALAPPDATA%\io.github.mgelsinger.smsbridge\backup-before-fcd3328`).
+  Checked afterwards: the phone restarted the bridge by itself and the PC was
+  connected again within a second; SMS permissions and pairing were kept; the
+  four call permissions are not granted, the phone answers `GET /calls` with
+  403 as designed, and the PC store is at schema 3 with every message still
+  there. No real call has gone through it. Phase 7 is not started; a
+  throwaway program for its deciding experiment is built, and Mickey accepts
+  Windows' own Bluetooth calling for it (DECISIONS.md, "Calls"). What is left
+  is all at the desk: [CALLS-DESK.md](CALLS-DESK.md).
 - The agent reaches the phone over adb Wireless debugging, which Mickey turns
   on and pairs himself. Reading the app's status and installing builds is
   fine; permission prompts, pairing approval, and sending texts are his.
@@ -87,7 +96,7 @@ Last updated: 2026-11-20.
   hits. Installed on the PC as dev-0351f88 the same day and checked in the
   real window: a contact found by three letters of a surname, a number
   found typed as (xxx) xxx-xxxx, "Nothing matches." for gibberish. The
-  phone stays on dev-969c085; nothing since needs a new APK.
+  phone stayed on dev-969c085 until dev-fcd3328 that evening.
 - Dependency updates are waiting. Dependabot's grouped PRs (#6 and #7, which
   it replaced itself with #9 for npm and #8 for Gradle) were closed unmerged
   on 2026-11-14 because CI was red on both. They are toolchain migrations,
@@ -134,9 +143,10 @@ Last updated: 2026-11-20.
   since Android 10; they work on the Android 14 emulator and nobody knows yet
   whether Mickey's phone still honours them. Same for the caller's number
   arriving while it rings, and for a call started from the background
-  service. The steps are Part A of [CALLS-DESK.md](CALLS-DESK.md). The new
-  phone build asks for nothing until he taps "Allow calls"; until then the PC
-  says calls are not allowed on the phone and texts are untouched.
+  service. The steps are Part A of [CALLS-DESK.md](CALLS-DESK.md), from
+  step 2: the build is installed. It asks for nothing until he taps "Allow
+  calls"; until then the PC says calls are not allowed on the phone and texts
+  are untouched.
 - Calls, phase 7: the Bluetooth experiment is not run. `tools/calls-probe` is
   built (`tools/calls-probe/target/release/calls-probe.exe` on this PC) and
   runs end to end with `--no-phone`. Known without the phone: the PC has a

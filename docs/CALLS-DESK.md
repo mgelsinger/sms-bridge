@@ -11,10 +11,9 @@ one you make, or one somebody makes to you.
 
 ## Part A: calls over the bridge
 
-1. **Install the newest dev build on both.** The agent can do this as before
-   once Wireless debugging is on: the APK with `adb install -r`, the installer
-   with `/S`. Pairing and permissions are kept. The PC build upgrades its
-   store in place (schema 2 to 3, one new table).
+1. **Install the newest dev build on both.** Done on 2026-11-20:
+   dev-fcd3328 is on the phone and the PC, pairing and permissions kept, the
+   PC store upgraded in place. Nothing for you here.
 2. **Allow calls on the phone.** Open SMS Bridge, scroll to the Calls card
    under Paired PCs, tap "Allow calls", and accept what Android asks. Expect
    two prompts: Phone, and Call logs. If Android refuses Call logs, it is the
@@ -57,14 +56,10 @@ covered by tests on both sides.
 
 Decides phase 7. It uses a throwaway program, not the app.
 
-Before you run it, one thing to know and decide. The program uses the
-Bluetooth hands-free support that is built into Windows (the
-`Windows.ApplicationModel.Calls` API). It needs no Microsoft account and does
-not involve Phone Link, and it talks to nothing but the paired phone, but it
-is a part of Windows. You said you do not trust what is built into Windows.
-If that rules this out, skip Part B and say so: the other route is our own
-Bluetooth stack on a separate USB adapter, which is a much bigger build and
-would be planned afresh.
+The program uses the Bluetooth hands-free support that is built into Windows
+(the `Windows.ApplicationModel.Calls` API), which you accepted on 2026-11-20.
+It needs no Microsoft account, does not involve Phone Link, and talks to
+nothing but the paired phone.
 
 1. On the PC: Settings, Bluetooth & devices, Add device, Bluetooth, pick the
    phone, accept on both. If the phone asks about sharing contacts and call
