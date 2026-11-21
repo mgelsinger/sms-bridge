@@ -7,6 +7,7 @@ import { Attachment } from "./Attachment";
 import { Avatar } from "./Avatar";
 import { OFFERED, placeReactions, reactionText } from "../lib/reactions";
 import { linkify } from "../lib/links";
+import { hasDraft, loadDraft, onDraftsChanged } from "../lib/drafts";
 import styles from "./Messenger.module.css";
 
 type Selection = { kind: "thread"; id: number } | { kind: "new"; forwarded?: Forwarded } | null;
@@ -38,6 +39,10 @@ export function Messenger({ paired, conn, onUnpaired, call }: { paired: Paired; 
   const refreshThreads = useCallback(() => {
     api.threads().then(setThreads).catch(() => {});
   }, []);
+
+  // Redraw the list's "Draft:" marks when a conversation gains or loses one.
+  const [, setDraftTick] = useState(0);
+  useEffect(() => onDraftsChanged(() => setDraftTick((n) => n + 1)), []);
 
   useEffect(() => {
     refreshThreads();
@@ -196,7 +201,13 @@ function ThreadRow({ thread: t, selected, onOpen }: { thread: ThreadView; select
             <span className={styles.time}>{listTime(t.date)}</span>
           </span>
           <span className={styles.threadBottom}>
-            <span className={styles.snippet}>{t.snippet ?? ""}</span>
+            {hasDraft(`thread:${t.id}`) && !selected ? (
+              <span className={styles.snippet}>
+                <span className={styles.draftMark}>Draft:</span> {loadDraft(`thread:${t.id}`)}
+              </span>
+            ) : (
+              <span className={styles.snippet}>{t.snippet ?? ""}</span>
+            )}
             {t.unread > 0 && <span className={styles.badge}>{t.unread}</span>}
           </span>
         </span>
@@ -320,6 +331,7 @@ function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: 
         <Composer
           autoFocus
           mmsMaxBytes={mmsMax}
+          draftKey={`thread:${thread.id}`}
           placeholder={group ? "Message everyone" : undefined}
           onSend={async (body, attachments) => {
             try {

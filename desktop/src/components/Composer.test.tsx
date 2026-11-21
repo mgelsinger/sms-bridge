@@ -53,6 +53,21 @@ describe("Composer", () => {
   });
 });
 
+describe("Composer drafts", () => {
+  it("keeps unsent text for its conversation and clears it once sent", async () => {
+    window.localStorage.clear();
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<Composer onSend={onSend} draftKey="thread:5" />);
+    fireEvent.change(box(), { target: { value: "half a thought" } });
+    unmount();
+    render(<Composer onSend={onSend} draftKey="thread:5" />);
+    expect(box().value).toBe("half a thought");
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await waitFor(() => expect(box().value).toBe(""));
+    expect(window.localStorage.getItem("draft:thread:5")).toBeNull();
+  });
+});
+
 describe("Composer attachments", () => {
   const pic = () => new File([new Uint8Array(10)], "IMG_1.jpg", { type: "image/jpeg" });
   const ready = [{ content_type: "image/jpeg", name: "IMG_1.jpg", data: "AAAA" }];

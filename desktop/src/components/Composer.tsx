@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import type { OutgoingAttachment } from "../lib/api";
 import { countSegments } from "../lib/segments";
 import { prepareAttachments, TooLarge } from "../lib/shrink";
+import { loadDraft, saveDraft } from "../lib/drafts";
 import styles from "./Composer.module.css";
 
 interface Props {
@@ -16,6 +17,8 @@ interface Props {
   /** What the box starts with, for a forwarded message. */
   initialText?: string;
   initialFiles?: File[];
+  /** Keeps unsent text under this key across switching conversations. */
+  draftKey?: string;
 }
 
 const MAX_FILES = 10;
@@ -32,8 +35,12 @@ interface Picked {
  * phone can send MMS, pictures and other files can be attached with the button, pasted,
  * or dropped on the box; they are shrunk to fit the carrier's limit on Send.
  */
-export function Composer({ onSend, disabled, placeholder = "Text message", autoFocus, mmsMaxBytes = null, prepare = prepareAttachments, initialText = "", initialFiles }: Props) {
-  const [text, setText] = useState(initialText);
+export function Composer({ onSend, disabled, placeholder = "Text message", autoFocus, mmsMaxBytes = null, prepare = prepareAttachments, initialText = "", initialFiles, draftKey }: Props) {
+  const [text, setTextState] = useState(() => initialText || (draftKey ? loadDraft(draftKey) : ""));
+  const setText = (t: string) => {
+    setTextState(t);
+    if (draftKey) saveDraft(draftKey, t);
+  };
   const [picked, setPicked] = useState<Picked[]>(() =>
     (initialFiles ?? []).slice(0, MAX_FILES).map((file) => ({ file, preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null })),
   );

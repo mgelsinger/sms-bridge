@@ -118,6 +118,10 @@
   white-space: nowrap;
   font-size: 13px;
 }
+.draftMark {
+  color: var(--danger);
+  font-weight: 600;
+}
 .badge {
   background: var(--accent);
   color: var(--accent-fg);
