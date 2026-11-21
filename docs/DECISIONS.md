@@ -3,6 +3,64 @@
 Choices made during the build that the plan left open or that changed it.
 Newest first.
 
+## Pictures, group replies, attachments, 2026-11-20
+
+Mickey on 2026-11-20: "Do as much as you can to incorporate as many features
+as you can", towards "an [iMessage]-like set up but over Android".
+
+**Sending MMS moves out of phase 5.** The plan put "send MMS" under phase 5
+(default SMS app). Android lets any app with SEND_SMS call
+`SmsManager.sendMultimediaMessage`, and for an app that is not the default
+SMS app the system's MMS service stores the sent copy itself, so the watcher
+sees it like a sent SMS. Phase 5 keeps marking read on the phone, dual SIM,
+and the hidden MMS rows. Not yet seen on the real phone: whether Android 17
+withholds the stored copy of an MMS this app sent (as its emulator did for
+SMS, see "Phase 4"); if so, the PC keeps the "1 attachment" bubble pending.
+
+**The MMS is built in our code, not a library.** Android has no public
+builder for the m-send-req PDU. The usual library is an unmaintained copy of
+the platform's internal one, thousands of lines for one message type.
+`MmsPdu` writes only the send request (OMA MMS Encapsulation 1.2): the three
+opening headers, From with insert-address, one To per recipient, no delivery
+or read report, and a multipart/related body of SMIL, attachments, and the
+text as UTF-8. JVM tests check the bytes and walk every length. What no test
+here can prove is that a carrier's MMS server accepts it; that is the desk
+check.
+
+**Attachments travel inside the `send` frame as base64.** A separate upload
+endpoint would have needed its own idempotency and cleanup. In the frame, the
+outbox stores the whole send and the existing replay after reconnect covers
+pictures too. The cost is about a third more bytes on the LAN for a message
+of at most the carrier limit (about 1 MB).
+
+**The PC makes pictures fit; the phone only checks.** The phone reports the
+carrier's limit (`MMS_CONFIG_MAX_MESSAGE_SIZE`, 300 KB when the carrier
+config says nothing) and refuses anything larger with `MMS_TOO_LARGE`. The
+PC aims at 90 percent of it less the text and 4 KB, shared between the files:
+a picture that already fits goes as it is (GIFs stay animated); otherwise
+JPEG from a 1600-pixel long edge, quality 0.85 down to 0.4, then three
+quarters of the size, down to 320 pixels. Video and audio are never
+re-encoded and must already fit.
+
+**Group conversations get a composer when the phone can send MMS.** A reply
+to a thread with several people goes to all of them as one group MMS, the
+way phones do it. New group conversations from the PC are not offered yet:
+the new-message screen takes one number.
+
+**Saving attachments writes to Downloads without asking where.** A save
+dialog needs `tauri-plugin-dialog`, a new dependency, for a choice most
+people make the same way every time. The file gets the sender's name for it
+made safe for Windows, never overwrites (`name (2).jpg`), and "Show in
+folder" opens Explorer on it. Video and audio play in the window and are
+fetched from the phone only when Play is pressed.
+
+**iPhone reactions are shown on their message.** With RCS off, an iPhone's
+tapback arrives as a text such as `Loved "see you soon"`. The PC places it
+as a badge on the newest earlier message with that text (or on the newest
+picture for `Loved an image`), takes it back on `Removed a heart from`, and
+leaves the text as a bubble when no loaded message matches. Two of the 1080
+messages on Mickey's PC on 2026-11-20 were reactions.
+
 ## Release choices, 2026-11-20
 
 Asked of Mickey on 2026-11-20; his answers.
