@@ -178,6 +178,7 @@ fn send(
     to: Option<Vec<String>>,
     body: String,
     attachments: Option<Vec<sms_bridge_core::protocol::OutgoingAttachment>>,
+    send_at: Option<u64>,
 ) -> Result<(), String> {
     let attachments = attachments.unwrap_or_default();
     if body.is_empty() && attachments.is_empty() {
@@ -210,6 +211,7 @@ fn send(
         to: (!to.is_empty()).then(|| to.join(",")),
         body,
         attachments,
+        send_at,
     })
 }
 

@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { OFFERED, placeReactions, reactionText } from "../lib/reactions";
 import { linkify } from "../lib/links";
 import { hasDraft, loadDraft, onDraftsChanged } from "../lib/drafts";
+import { whenLabel } from "../lib/schedule";
 import styles from "./Messenger.module.css";
 
 type Selection = { kind: "thread"; id: number } | { kind: "new"; forwarded?: Forwarded } | null;
@@ -319,6 +320,7 @@ function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: 
                     : undefined
                 }
                 onForward={onForward ? () => onForward(m) : undefined}
+                onChanged={load}
               />
             </div>
           );
@@ -333,10 +335,10 @@ function Conversation({ thread, call, onForward }: { thread: ThreadView; call?: 
           mmsMaxBytes={mmsMax}
           draftKey={`thread:${thread.id}`}
           placeholder={group ? "Message everyone" : undefined}
-          onSend={async (body, attachments) => {
+          onSend={async (body, attachments, sendAt) => {
             try {
               setError(null);
-              await api.send(body, { threadId: thread.id }, attachments);
+              await api.send(body, { threadId: thread.id }, attachments, sendAt);
               load();
             } catch (e) {
               setError(errorText(e));
@@ -356,6 +358,7 @@ function Bubble({
   onError,
   onReact,
   onForward,
+  onChanged = () => {},
 }: {
   message: MessageView;
   showSender: boolean;
@@ -364,6 +367,8 @@ function Bubble({
   /** Absent where reacting cannot be sent (the phone is not reachable, or nothing to name). */
   onReact?: (emoji: string, remove: boolean) => void;
   onForward?: () => void;
+  /** After a pending send was discarded or cancelled, so the view reloads. */
+  onChanged?: () => void;
 }) {
   const out = m.direction === "out";
   const time = new Date(m.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -473,8 +478,16 @@ function Bubble({
                 Retry
               </button>
               {" · "}
-              <button className={styles.inlineBtn} onClick={() => api.discard(m.client_id ?? "").catch((e) => onError(errorText(e)))}>
+              <button className={styles.inlineBtn} onClick={() => api.discard(m.client_id ?? "").then(onChanged, (e) => onError(errorText(e)))}>
                 Discard
+              </button>
+            </>
+          )}
+          {m.scheduled_for && m.client_id && (
+            <>
+              {" · "}
+              <button className={styles.inlineBtn} onClick={() => api.discard(m.client_id ?? "").then(onChanged, (e) => onError(errorText(e)))}>
+                Cancel
               </button>
             </>
           )}
@@ -487,7 +500,7 @@ function Bubble({
 function statusText(m: MessageView): string | null {
   switch (m.status) {
     case "pending":
-      return "Sending";
+      return m.scheduled_for ? `Scheduled for ${whenLabel(m.scheduled_for)}` : "Sending";
     case "sent":
       return "Sent";
     case "delivered":
@@ -598,7 +611,7 @@ function NewMessage({ onSent, forwarded }: { onSent: (threadId: number | null) =
         mmsMaxBytes={mmsMax}
         initialText={forwarded?.body}
         initialFiles={forwarded?.files}
-        onSend={async (body, attachments) => {
+        onSend={async (body, attachments, sendAt) => {
           const typedNumber = typed ? cleanNumber(typed) : null;
           const numbers = [...recipients.map((r) => r.number), ...(typedNumber && !recipients.some((r) => last10(r.number) === last10(typedNumber)) ? [typedNumber] : [])];
           if (numbers.length === 0) {
@@ -611,7 +624,7 @@ function NewMessage({ onSent, forwarded }: { onSent: (threadId: number | null) =
           }
           try {
             setError(null);
-            await api.send(body, { to: numbers }, attachments);
+            await api.send(body, { to: numbers }, attachments, sendAt);
             // The thread id is known once the phone echoes the message; find it then.
             setTimeout(async () => onSent(threadFor(await api.threads(), numbers)?.id ?? null), 1500);
           } catch (e) {

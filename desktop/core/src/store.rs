@@ -16,7 +16,9 @@ pub type Result<T> = rusqlite::Result<T>;
 /// The schema, one step per version. A store is brought up to date by running
 /// the steps it has not seen, each in its own transaction, so `user_version`
 /// always says exactly which steps are in the file.
-const MIGRATIONS: [&str; 5] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
+const MIGRATIONS: [&str; 6] = [
+    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6,
+];
 
 const SCHEMA_V1: &str = "
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -108,6 +110,11 @@ const SCHEMA_V5: &str = "
     ALTER TABLE contacts ADD COLUMN contact_id INTEGER;
     ALTER TABLE contacts ADD COLUMN photo INTEGER NOT NULL DEFAULT 0;";
 
+/// Version 6: a send the user scheduled carries the time it may go
+/// (`send_at`, ms). Until then it is kept out of the replay after reconnect;
+/// when due, the engine clears `send_at` and sends it like any queued text.
+const SCHEMA_V6: &str = "ALTER TABLE outbox ADD COLUMN send_at INTEGER;";
+
 /// Preference: raise a pop-up notification for inbound texts. Off unless set.
 pub const PREF_POPUPS: &str = "pref:popups";
 
@@ -155,6 +162,8 @@ pub struct MessageView {
     /// For an unsent outbox entry: how many attachments it carries, which the
     /// phone has not stored yet and so have no parts to show.
     pub pending_attachments: u32,
+    /// For a scheduled send not yet released: when it will go (ms).
+    pub scheduled_for: Option<u64>,
 }
 
 /// A call history entry as the UI shows it.
@@ -185,6 +194,8 @@ pub struct OutboxItem {
     pub message_id: Option<String>,
     pub error: Option<String>,
     pub attachments: Vec<OutgoingAttachment>,
+    /// Set while a scheduled send waits for its time.
+    pub send_at: Option<u64>,
 }
 
 fn enum_str<T: Serialize>(v: &T) -> String {
@@ -447,10 +458,38 @@ impl Store {
     /// the phone ignores client_ids it has already handled.
     pub fn outbox_unconfirmed(&self) -> Result<Vec<OutboxItem>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT {OUTBOX_COLUMNS} FROM outbox WHERE status = 'queued' ORDER BY created_at"
+            "SELECT {OUTBOX_COLUMNS} FROM outbox WHERE status = 'queued' AND send_at IS NULL ORDER BY created_at"
         ))?;
         let rows = stmt.query_map([], outbox_row)?;
         rows.collect()
+    }
+
+    /// Holds a queued send back until `send_at` (ms).
+    pub fn outbox_schedule(&self, client_id: &str, send_at: u64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE outbox SET send_at = ?2 WHERE client_id = ?1",
+            params![client_id, send_at],
+        )?;
+        Ok(())
+    }
+
+    /// Scheduled sends whose time has come, released: from now on they are
+    /// ordinary queued sends, replayed after every reconnect until confirmed.
+    pub fn outbox_release_due(&mut self, now: u64) -> Result<Vec<OutboxItem>> {
+        let tx = self.conn.transaction()?;
+        let due = {
+            let mut stmt = tx.prepare(&format!(
+                "SELECT {OUTBOX_COLUMNS} FROM outbox WHERE status = 'queued' AND send_at IS NOT NULL AND send_at <= ?1 ORDER BY send_at"
+            ))?;
+            let rows = stmt.query_map([now], outbox_row)?;
+            rows.collect::<Result<Vec<_>>>()?
+        };
+        tx.execute(
+            "UPDATE outbox SET send_at = NULL WHERE status = 'queued' AND send_at IS NOT NULL AND send_at <= ?1",
+            [now],
+        )?;
+        tx.commit()?;
+        Ok(due)
     }
 
     /// Removes a failed send the user chose to discard.
@@ -667,8 +706,10 @@ impl Store {
                 sender_name: None,
                 body: (!o.body.is_empty()).then(|| o.body.clone()),
                 pending_attachments: u32::try_from(o.attachments.len()).unwrap_or(u32::MAX),
+                scheduled_for: o.send_at,
                 parts: Vec::new(),
-                date: o.created_at,
+                // A scheduled send sits where it will appear once sent.
+                date: o.send_at.unwrap_or(o.created_at),
                 status: Some(if o.status == SendStatus::Failed {
                     MessageStatus::Failed
                 } else {
@@ -753,6 +794,7 @@ fn message_view(names: &HashMap<String, String>, r: &rusqlite::Row<'_>) -> Resul
         client_id: r.get(9)?,
         error: r.get(10)?,
         pending_attachments: 0,
+        scheduled_for: None,
     })
 }
 
@@ -770,7 +812,7 @@ fn fts_query(input: &str) -> Option<String> {
 }
 
 const OUTBOX_COLUMNS: &str =
-    "client_id, thread_id, to_address, body, created_at, status, message_id, error, attachments";
+    "client_id, thread_id, to_address, body, created_at, status, message_id, error, attachments, send_at";
 
 fn outbox_row(r: &rusqlite::Row<'_>) -> Result<OutboxItem> {
     Ok(OutboxItem {
@@ -786,6 +828,7 @@ fn outbox_row(r: &rusqlite::Row<'_>) -> Result<OutboxItem> {
             .get::<_, Option<String>>(8)?
             .map(|s| json_vec(&s))
             .unwrap_or_default(),
+        send_at: r.get(9)?,
     })
 }
 
@@ -1023,6 +1066,37 @@ mod tests {
         s.upsert_messages(&[msg("sms:2", 11, Direction::In, 300, "again")])
             .expect("new");
         assert_eq!(s.threads().expect("threads")[0].unread, 1);
+    }
+
+    #[test]
+    fn a_scheduled_send_waits_for_its_time_then_goes_once() {
+        let mut s = Store::open_in_memory().expect("open");
+        s.outbox_add("c1", Some(11), None, "happy birthday", &[], 100)
+            .expect("outbox");
+        s.outbox_schedule("c1", 5_000).expect("schedule");
+        assert!(
+            s.outbox_unconfirmed().expect("pending").is_empty(),
+            "not replayed before its time"
+        );
+        let m = s.messages(11, None, 10).expect("messages");
+        assert_eq!(m[0].scheduled_for, Some(5_000));
+        assert_eq!(m[0].date, 5_000, "shown where it will land");
+        assert!(s.outbox_release_due(4_999).expect("early").is_empty());
+        let due = s.outbox_release_due(5_000).expect("due");
+        assert_eq!(due.len(), 1);
+        assert!(
+            s.outbox_release_due(9_000).expect("again").is_empty(),
+            "released once"
+        );
+        assert_eq!(
+            s.outbox_unconfirmed().expect("pending").len(),
+            1,
+            "an ordinary queued send now"
+        );
+        assert_eq!(
+            s.messages(11, None, 10).expect("messages")[0].scheduled_for,
+            None
+        );
     }
 
     #[test]

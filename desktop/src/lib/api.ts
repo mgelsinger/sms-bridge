@@ -67,6 +67,8 @@ export interface MessageView {
   error: string | null;
   /** On an unsent message: attachments the phone has not stored yet. */
   pending_attachments?: number;
+  /** On a scheduled send not yet gone: when it will go. */
+  scheduled_for?: number | null;
 }
 
 /** An attachment on its way to the phone, as base64. */
@@ -147,12 +149,13 @@ export const api = {
   search: (query: string) => invoke<MessageView[]>("search", { query }),
   contacts: () => invoke<[string, string][]>("contacts"),
   /** `to` with several numbers starts a group text. */
-  send: (body: string, target: { threadId: number } | { to: string | string[] }, attachments: OutgoingAttachment[] = []) =>
+  send: (body: string, target: { threadId: number } | { to: string | string[] }, attachments: OutgoingAttachment[] = [], sendAt?: number) =>
     invoke<void>("send", {
       threadId: "threadId" in target ? target.threadId : null,
       to: "to" in target ? (Array.isArray(target.to) ? target.to : [target.to]) : null,
       body,
       attachments: attachments.length > 0 ? attachments : null,
+      sendAt: sendAt ?? null,
     }),
   mmsAbilities: () => invoke<MmsAbilities | null>("mms_abilities"),
   retry: (clientId: string) => invoke<void>("retry", { clientId }),

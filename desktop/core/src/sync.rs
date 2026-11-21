@@ -17,6 +17,7 @@ use tokio::time::{interval, timeout, Instant, MissedTickBehavior};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 const PING_EVERY: Duration = Duration::from_secs(30);
+const SCHEDULE_CHECK_EVERY: Duration = Duration::from_secs(15);
 const PONG_WITHIN: Duration = Duration::from_secs(10);
 /// A retry is one connection attempt on the user's own network, so there is no
 /// reason to make them wait long once the phone is back.
@@ -116,6 +117,8 @@ pub enum Command {
         to: Option<String>,
         body: String,
         attachments: Vec<OutgoingAttachment>,
+        /// Hold the send until this time (ms); `None` sends now.
+        send_at: Option<u64>,
     },
     /// Re-send a failed message under a new client_id (the phone would otherwise
     /// return the remembered failure).
@@ -331,6 +334,9 @@ impl Engine {
         ping.set_missed_tick_behavior(MissedTickBehavior::Delay);
         ping.tick().await;
         let mut pong_deadline: Option<Instant> = None;
+        // Scheduled sends go within this long of their time, while connected.
+        let mut due = interval(SCHEDULE_CHECK_EVERY);
+        due.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             let deadline = pong_deadline;
@@ -367,6 +373,9 @@ impl Engine {
                         pong_deadline = Some(Instant::now() + PONG_WITHIN);
                     }
                     if let Err(e) = send(&mut sink, &Envelope::new(Frame::Ping)).await { return e; }
+                }
+                _ = due.tick() => {
+                    if let Err(e) = self.core.release_due(&mut sink).await { return e; }
                 }
                 _ = pong_wait => return End::Retry("the phone stopped answering pings".into()),
                 _ = call_wait => {
@@ -469,22 +478,42 @@ impl Core {
 
     /// Records a send in the outbox. Returns the frame to send now, if connected.
     fn queue(&self, cmd: Command) -> rusqlite::Result<Option<Envelope>> {
-        let (thread_id, to, body, attachments) = match cmd {
+        let (thread_id, to, body, attachments, send_at) = match cmd {
             Command::Send {
                 thread_id,
                 to,
                 body,
                 attachments,
-            } => (thread_id, to, body, attachments),
+                send_at,
+            } => (thread_id, to, body, attachments, send_at),
             Command::Retry { client_id } => {
                 let Some(old) = self.db(|s| s.outbox_get(&client_id))? else {
                     return Ok(None);
                 };
                 self.db(|s| s.outbox_remove(&client_id))?;
-                (old.thread_id, old.to, old.body, old.attachments)
+                (old.thread_id, old.to, old.body, old.attachments, None)
             }
             _ => return Ok(None),
         };
+        let now = now_ms();
+        if let Some(at) = send_at.filter(|at| *at > now) {
+            let client_id = uuid::Uuid::new_v4().to_string();
+            self.db(|s| {
+                s.outbox_add(
+                    &client_id,
+                    thread_id,
+                    to.as_deref(),
+                    &body,
+                    &attachments,
+                    now,
+                )?;
+                s.outbox_schedule(&client_id, at)
+            })?;
+            if let Some(t) = thread_id {
+                self.events.thread_changed(t);
+            }
+            return Ok(None);
+        }
         let client_id = uuid::Uuid::new_v4().to_string();
         self.db(|s| {
             s.outbox_add(
@@ -621,6 +650,28 @@ impl Core {
             }
         }
         self.db(|s| s.set_meta(META_SYNC_CURSOR, &start.next_cursor))?;
+        Ok(())
+    }
+
+    /// Sends every scheduled text whose time has come.
+    async fn release_due(&self, sink: &mut Sink) -> Result<(), End> {
+        let due = self.db(|s| s.outbox_release_due(now_ms()))?;
+        for item in due {
+            if let Some(t) = item.thread_id {
+                self.events.thread_changed(t);
+            }
+            send(
+                sink,
+                &send_frame(
+                    item.client_id,
+                    item.thread_id,
+                    item.to,
+                    item.body,
+                    item.attachments,
+                ),
+            )
+            .await?;
+        }
         Ok(())
     }
 

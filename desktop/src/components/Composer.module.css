@@ -68,6 +68,43 @@
   line-height: 1;
   padding: 0;
 }
+.sendRow {
+  display: flex;
+  gap: 4px;
+}
+.later {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 6px 9px;
+}
+.schedule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+.preset {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 5px 12px;
+  font-size: 13px;
+}
+.pickTime {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.scheduleNote {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
 .problem {
   color: var(--danger);
   font-size: 12px;

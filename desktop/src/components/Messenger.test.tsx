@@ -186,7 +186,7 @@ describe("reacting, forwarding and group texts from the PC", () => {
     const box = screen.getByLabelText("Message");
     fireEvent.change(box, { target: { value: "Dinner at 7?" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Dinner at 7?", { to: ["5855550101", "5855550177"] }, []));
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Dinner at 7?", { to: ["5855550101", "5855550177"] }, [], undefined));
   });
 });
 
@@ -224,7 +224,7 @@ describe("group conversations", () => {
     expect(screen.getByLabelText("Attach a picture or file")).toBeTruthy();
     fireEvent.change(box, { target: { value: "Dinner at 7?" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Dinner at 7?", { threadId: 2 }, []));
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith("Dinner at 7?", { threadId: 2 }, [], undefined));
   });
 });
 

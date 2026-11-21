@@ -3,10 +3,12 @@ import type { OutgoingAttachment } from "../lib/api";
 import { countSegments } from "../lib/segments";
 import { prepareAttachments, TooLarge } from "../lib/shrink";
 import { loadDraft, saveDraft } from "../lib/drafts";
+import { fromLocalInput, presets, toLocalInput } from "../lib/schedule";
 import styles from "./Composer.module.css";
 
 interface Props {
-  onSend: (body: string, attachments: OutgoingAttachment[]) => Promise<void>;
+  /** `sendAt` (ms) when the user chose to send later. */
+  onSend: (body: string, attachments: OutgoingAttachment[], sendAt?: number) => Promise<void>;
   disabled?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
@@ -47,6 +49,8 @@ export function Composer({ onSend, disabled, placeholder = "Text message", autoF
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [customAt, setCustomAt] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const info = countSegments(text);
   const canAttach = mmsMaxBytes !== null && mmsMaxBytes > 0;
@@ -77,8 +81,9 @@ export function Composer({ onSend, disabled, placeholder = "Text message", autoF
     });
   };
 
-  const submit = async () => {
+  const submit = async (sendAt?: number) => {
     if (!canSend) return;
+    setScheduling(false);
     if (picked.length > 0 && !canAttach) {
       setProblem("Your phone cannot send pictures right now. Remove the attachments to send the text.");
       return;
@@ -88,7 +93,7 @@ export function Composer({ onSend, disabled, placeholder = "Text message", autoF
     setProblem(null);
     try {
       const attachments = picked.length > 0 && mmsMaxBytes ? await prepare(picked.map((p) => p.file), body, mmsMaxBytes) : [];
-      await onSend(body, attachments);
+      await onSend(body, attachments, sendAt);
       setText("");
       picked.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
       setPicked([]);
@@ -186,11 +191,40 @@ export function Composer({ onSend, disabled, placeholder = "Text message", autoF
           <span className={styles.count} aria-label="Segments" title={info.encoding === "ucs2" ? "Contains characters that need Unicode, so segments are shorter" : "Standard SMS characters"}>
             {picked.length > 0 ? "MMS" : info.segments > 1 ? `${info.remaining} / ${info.segments}` : info.units > 0 ? `${info.remaining}` : ""}
           </span>
-          <button className={styles.send} onClick={() => void submit()} disabled={!canSend} aria-label="Send">
-            {sending && picked.length > 0 ? "Sending…" : "Send"}
-          </button>
+          <div className={styles.sendRow}>
+            <button className={styles.send} onClick={() => void submit()} disabled={!canSend} aria-label="Send">
+              {sending && picked.length > 0 ? "Sending…" : "Send"}
+            </button>
+            <button className={styles.later} onClick={() => setScheduling((s) => !s)} disabled={!canSend} aria-label="Send later" aria-expanded={scheduling} title="Send later">
+              ⏱
+            </button>
+          </div>
         </div>
       </div>
+      {scheduling && (
+        <div className={styles.schedule} role="dialog" aria-label="Send later">
+          {presets(new Date()).map((p) => (
+            <button key={p.label} className={styles.preset} onClick={() => void submit(p.at)}>
+              {p.label}
+            </button>
+          ))}
+          <label className={styles.pickTime}>
+            Or at
+            <input type="datetime-local" value={customAt} min={toLocalInput(Date.now())} onChange={(e) => setCustomAt(e.target.value)} aria-label="Send at" />
+          </label>
+          <button
+            className={styles.preset}
+            disabled={fromLocalInput(customAt, Date.now()) === null}
+            onClick={() => {
+              const at = fromLocalInput(customAt, Date.now());
+              if (at !== null) void submit(at);
+            }}
+          >
+            Schedule
+          </button>
+          <span className={styles.scheduleNote}>This PC sends it then, so it needs to be on and connected to the phone.</span>
+        </div>
+      )}
     </div>
   );
 }

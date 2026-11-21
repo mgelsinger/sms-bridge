@@ -14,7 +14,7 @@ describe("Composer", () => {
     render(<Composer onSend={onSend} />);
     fireEvent.change(box(), { target: { value: "On my way" } });
     fireEvent.keyDown(box(), { key: "Enter" });
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("On my way", []));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("On my way", [], undefined));
     await waitFor(() => expect(box().value).toBe(""));
   });
 
@@ -53,6 +53,33 @@ describe("Composer", () => {
   });
 });
 
+describe("Composer send later", () => {
+  it("sends at a chosen preset time instead of now", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<Composer onSend={onSend} />);
+    fireEvent.change(box(), { target: { value: "happy birthday" } });
+    const before = Date.now();
+    fireEvent.click(screen.getByRole("button", { name: "Send later" }));
+    fireEvent.click(screen.getByRole("button", { name: "In 1 hour" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    const [body, attachments, at] = onSend.mock.calls[0] as [string, unknown[], number];
+    expect(body).toBe("happy birthday");
+    expect(attachments).toEqual([]);
+    expect(at).toBeGreaterThanOrEqual(before + 3_600_000);
+    expect(screen.queryByRole("dialog", { name: "Send later" })).toBeNull();
+  });
+
+  it("only schedules a picked time that is in the future", () => {
+    render(<Composer onSend={vi.fn()} />);
+    fireEvent.change(box(), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send later" }));
+    const schedule = screen.getByRole("button", { name: "Schedule" }) as HTMLButtonElement;
+    expect(schedule.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Send at"), { target: { value: "2000-01-01T08:00" } });
+    expect(schedule.disabled).toBe(true);
+  });
+});
+
 describe("Composer drafts", () => {
   it("keeps unsent text for its conversation and clears it once sent", async () => {
     window.localStorage.clear();
@@ -88,7 +115,7 @@ describe("Composer attachments", () => {
     expect(screen.getByRole("list", { name: "Attachments" }).children).toHaveLength(1);
     expect(screen.getByLabelText("Segments").textContent).toBe("MMS");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("", ready));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("", ready, undefined));
     expect(prepare.mock.calls[0]?.[2]).toBe(1_000_000);
     await waitFor(() => expect(screen.queryByRole("list", { name: "Attachments" })).toBeNull());
   });
