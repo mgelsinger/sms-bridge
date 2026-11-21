@@ -25,6 +25,9 @@ interface SmsRepository {
 
     fun mmsPart(partId: Long): PartBytes?
 
+    /** The contact's thumbnail photo, or null when it has none. */
+    fun contactPhoto(contactId: Long): PartBytes? = null
+
     fun deviceInfo(): DeviceInfo
 }
 

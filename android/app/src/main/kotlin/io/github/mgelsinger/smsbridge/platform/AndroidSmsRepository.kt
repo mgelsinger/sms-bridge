@@ -464,20 +464,40 @@ class AndroidSmsRepository(private val context: Context) : SmsRepository {
             ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY,
             ContactsContract.CommonDataKinds.Phone.NUMBER,
+            ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI,
         )
         val byId = LinkedHashMap<Long, Pair<String, MutableSet<String>>>()
+        val withPhoto = HashSet<Long>()
         try {
             query(phones, columns, null, null, null)?.use { c ->
                 while (c.moveToNext()) {
                     val name = c.getStringOrNull(1)?.takeIf { it.isNotBlank() } ?: continue
                     val number = c.getStringOrNull(2)?.trim()?.takeIf { it.isNotEmpty() } ?: continue
                     byId.getOrPut(c.getLong(0)) { name.take(200) to linkedSetOf() }.second += normalize(number)
+                    if (c.getStringOrNull(3) != null) withPhoto += c.getLong(0)
                 }
             }
         } catch (e: SecurityException) {
             return emptyList() // Contacts permission not granted; names fall back to numbers on the PC.
         }
-        return byId.map { (id, v) -> Contact(id = id, name = v.first, numbers = v.second.toList()) }
+        return byId.map { (id, v) ->
+            Contact(id = id, name = v.first, numbers = v.second.toList(), photo = if (id in withPhoto) true else null)
+        }
+    }
+
+    override fun contactPhoto(contactId: Long): PartBytes? {
+        val uri = android.content.ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId)
+        val bytes = try {
+            ContactsContract.Contacts.openContactPhotoInputStream(resolver, uri, false)?.use { it.readBytes() }
+        } catch (e: SecurityException) {
+            null
+        } ?: return null
+        // Thumbnails are JPEG in practice; say what the bytes are rather than assume.
+        val type = when {
+            bytes.size > 3 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "image/png"
+            else -> "image/jpeg"
+        }
+        return PartBytes(type, bytes)
     }
 
     override fun deviceInfo(): DeviceInfo {

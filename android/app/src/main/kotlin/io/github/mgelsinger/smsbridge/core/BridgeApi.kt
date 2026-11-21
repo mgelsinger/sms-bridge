@@ -147,6 +147,10 @@ class BridgeApi(
                 ok(CallsPage.serializer(), page)
             }
             else -> {
+                CONTACT_PHOTO.matchEntire(path)?.groupValues?.get(1)?.toLongOrNull()?.let { id ->
+                    val photo = repo.contactPhoto(id) ?: return error(404, ErrorCode.NOT_FOUND, "no photo")
+                    return ApiResponse(200, photo.contentType, photo.bytes)
+                }
                 val part = MMS_PART.matchEntire(path)?.groupValues?.get(1)?.toLongOrNull()
                     ?: return error(404, ErrorCode.NOT_FOUND, "no such endpoint")
                 val bytes = repo.mmsPart(part) ?: return error(404, ErrorCode.NOT_FOUND, "no such part")
@@ -251,6 +255,7 @@ class BridgeApi(
         const val JSON = "application/json; charset=utf-8"
         private val THREAD_MESSAGES = Regex("^/threads/(\\d{1,18})/messages$")
         private val MMS_PART = Regex("^/mms/(\\d{1,18})$")
+        private val CONTACT_PHOTO = Regex("^/contacts/(\\d{1,18})/photo$")
         private val CODE = Regex("^\\d{6}$")
         private val CLIENT_TYPES = setOf("send", "ping", "mark_read")
         private val CALL_TYPES = setOf("dial", "call_action")
