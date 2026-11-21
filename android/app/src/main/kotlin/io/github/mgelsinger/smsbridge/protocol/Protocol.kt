@@ -166,6 +166,9 @@ data class Contact(
     val id: Long,
     val name: String,
     val numbers: List<String>,
+    /** True when GET /contacts/{id}/photo has a picture; left out otherwise. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val photo: Boolean? = null,
 )
 
 @Serializable

@@ -83,6 +83,16 @@ class BridgeApiTest {
         assertEquals(404, runBlocking { api.handle("DELETE", "/threads", emptyMap(), null) }.status)
     }
 
+    @Test
+    fun contactPhotosAreServedAndMissingOnesAre404() {
+        val photo = get("/contacts/1/photo")
+        assertEquals(200, photo.status)
+        assertEquals("image/jpeg", photo.contentType)
+        assertEquals(64, photo.body.size)
+        assertEquals(404, get("/contacts/2/photo").status)
+        assertEquals(404, get("/contacts/x/photo").status)
+    }
+
     private fun pair(code: String) = runBlocking {
         api.handle("POST", "/pair", emptyMap(), """{"protocol_version":1,"pairing_code":"$code","client_name":"MIDGAR"}""")
     }

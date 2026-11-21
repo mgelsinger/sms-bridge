@@ -78,6 +78,9 @@ class FixtureRepository(root: File = fixturesDir()) : SmsRepository {
     override fun mmsPart(partId: Long): PartBytes? =
         if (partId == 3001L) PartBytes("image/png", ByteArray(236) { it.toByte() }) else null
 
+    override fun contactPhoto(contactId: Long): PartBytes? =
+        if (contactId == 1L) PartBytes("image/jpeg", ByteArray(64) { 0x7f }) else null
+
     override fun deviceInfo() = DeviceInfo(
         deviceName = status.deviceName,
         batteryPercent = status.batteryPercent,
