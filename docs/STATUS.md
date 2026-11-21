@@ -10,9 +10,10 @@ Last updated: 2026-11-20.
   hardware (Pixel 9 Pro Fold, Android 17, and his Windows PC); results and
   what was found on the way are in [PHASE-2.md](PHASE-2.md) and
   [PHASE-3.md](PHASE-3.md).
-- Running on both the phone and the PC: dev-fcd3328, since the evening of
-  2026-11-20 (the phone had dev-969c085 and the PC dev-0351f88 earlier that
-  day, both dev-5e591cf from 2026-11-11 before that), paired, and in
+- Running on both the phone and the PC: dev-a04794c, since 19:39 on
+  2026-11-20 (dev-fcd3328 earlier that evening; the phone had dev-969c085
+  and the PC dev-0351f88 earlier that day, both dev-5e591cf from 2026-11-11
+  before that), paired, and in
   ordinary daily use. Texts arrive overnight with the taskbar dot; texts sent
   from the PC go out once.
 - Mickey will not run the Wi-Fi-drop-mid-send check on his real phone. It is
@@ -89,7 +90,15 @@ Last updated: 2026-11-20.
   picture from the PC to his own number or a friend, a reply in a group
   conversation, and a picture over about 1 MB to see it shrunk. Watch for
   the sent picture's bubble staying "1 attachment" (stored copy withheld by
-  Android 17) and for `MMS_ERROR_*` in the phone's log.
+  Android 17) and for `MMS_ERROR_*` in the phone's log. Seen on his devices
+  with dev-a04794c: permissions and pairing kept through the update, the PC
+  store upgraded to step 5 with all 44 conversations, the phone reports
+  `mms: send true, max_bytes 1048576` from the carrier's own configuration,
+  and one contact photo (5 KB) came through. The emulator's MMS service
+  answers `MMS_ERROR_CONFIGURATION_ERROR` at once, before reading the PDU,
+  so whether the system can read it through the FileProvider grant is
+  proven only by a real send. PC store backup:
+  `%LOCALAPPDATA%\io.github.mgelsinger.smsbridge\backup-before-a04794c`.
 
 - "Start with Windows", the tray-only start at login, and the one-copy rule
   are proven only as far as CI goes (the registry round trip, the rules, the
